@@ -1,0 +1,58 @@
+{
+    "bpm": 138,
+    "key": "F#",
+    "scale": "minor",
+    "sections": [
+        {
+            "name": "Intro",
+            "start_bar": 0,
+            "length_bars": 8,
+            "energy": 0.3,
+            "active_instruments": [
+                "chords"
+            ]
+        },
+        {
+            "name": "Verse 1",
+            "start_bar": 8,
+            "length_bars": 16,
+            "energy": 0.5,
+            "active_instruments": [
+                "chords",
+                "bass"
+            ]
+        },
+        {
+            "name": "Hook 1",
+            "start_bar": 24,
+            "length_bars": 16,
+            "energy": 0.9,
+            "active_instruments": [
+                "chords",
+                "bass",
+                "melody"
+            ]
+        },
+        {
+            "name": "Breakdown",
+            "start_bar": 40,
+            "length_bars": 8,
+            "energy": 0.2,
+            "active_instruments": [
+                "chords",
+                "melody"
+            ]
+        },
+        {
+            "name": "Hook 2",
+            "start_bar": 48,
+            "length_bars": 16,
+            "energy": 1.0,
+            "active_instruments": [
+                "chords",
+                "bass",
+                "melody"
+            ]
+        }
+    ]
+}

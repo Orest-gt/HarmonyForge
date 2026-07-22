@@ -1,0 +1,47 @@
+[project]
+name = "harmonyforge"
+version = "0.1.0"
+description = "Next-generation AI-assisted harmony, melody, and MIDI generation engine"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Devin", email = "devin@harmonyforge.io" }
+]
+dependencies = [
+    "numpy>=1.26.0",
+    "scipy>=1.13.0",
+    "pydantic>=2.7.0",
+    "music21",
+    "mido",
+    "pretty_midi>=0.2.10",
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "librosa>=0.10.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+    "mypy"
+]
+ai = [
+    "torch"
+]
+
+[project.scripts]
+harmonyforge = "harmonyforge.cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true

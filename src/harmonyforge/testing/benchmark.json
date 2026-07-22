@@ -1,0 +1,12 @@
+[
+    {"artist": "Future", "producer": "Metro Boomin", "prompt": "dark cinematic trap", "key": "C", "scale": "harmonic_minor"},
+    {"artist": "Travis Scott", "producer": "Mike Dean", "prompt": "ambient space synth", "key": "F#", "scale": "minor"},
+    {"artist": "Juice WRLD", "producer": "Nick Mira", "prompt": "emotional acoustic", "key": "E", "scale": "minor"},
+    {"artist": "Drake", "producer": "40", "prompt": "underwater R&B sparse", "key": "D", "scale": "dorian"},
+    {"artist": "Pop Smoke", "producer": "808Melo", "prompt": "UK drill aggressive", "key": "G", "scale": "phrygian"},
+    {"artist": "Joey Bada$$", "producer": "Statik Selektah", "prompt": "boom bap nostalgic", "key": "A", "scale": "minor"},
+    {"artist": "Lil Uzi Vert", "producer": "Working on Dying", "prompt": "hyperpop fast bouncy", "key": "B", "scale": "major"},
+    {"artist": "Gunna", "producer": "Wheezy", "prompt": "slimy guitar trap", "key": "C#", "scale": "minor"},
+    {"artist": "Playboi Carti", "producer": "F1lthy", "prompt": "rage distorted loud", "key": "E", "scale": "phrygian"},
+    {"artist": "Kendrick Lamar", "producer": "Sounwave", "prompt": "jazz rap complex", "key": "Bb", "scale": "dorian"}
+]
