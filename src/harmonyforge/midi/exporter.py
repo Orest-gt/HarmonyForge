@@ -64,7 +64,9 @@ def export_loop(
                 ))
             t += bar_dur
 
-    humanize_instrument(inst_chord, style_name=swing_style, bpm=bpm)
+    # Chord pads get minimal swing (0.2) — they anchor the harmonic grid.
+    # Full swing only goes on melodic stems to avoid "late chord stab" artifacts.
+    humanize_instrument(inst_chord, style_name=swing_style, bpm=bpm, swing_strength=0.2)
     pm_chords.instruments.append(inst_chord)
     pm_chords.write(str(out_dir / "stem_chords.mid"))
 
