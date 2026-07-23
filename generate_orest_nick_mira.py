@@ -81,6 +81,8 @@ def generate_nick_mira_beat():
         logger.info("Stems: stem_chords.mid, stem_melody.mid, stem_bass.mid, stem_counter_melody.mid")
     except Exception as e:
         logger.error(f"Export failed: {e}")
+        import traceback
+        traceback.print_exc()
         raise
     
     return {

@@ -1,5 +1,5 @@
 """
-Melody generator v1.2 — High Coherence Engine.
+Melody generator v1.3 — Harmonic Gravity Field Engine.
 
 Key structural improvements for melodic cohesion:
   1. Directional Phrasing Wave: Uses continuous wave contour to generate organic arcs
@@ -11,6 +11,11 @@ Key structural improvements for melodic cohesion:
      - Phrase B (Bars 7-8): Turnaround phrase resolving smoothly to tonic / chord tone.
   3. Harmonic Adaptation without Distortion: Transposes the motif by scale degrees to fit
      new chords rather than destroying internal pitch relationships with random downbeat snapping.
+  4. Inverted Harmonic Gravity Field:
+     - Background chords generate variable pull vectors
+     - Non-chord tones accumulate kinetic tension over time
+     - Phrase boundaries trigger magnetic collapse to anchor pitches
+     - Melody naturally satisfies listener's psychological expectation
 """
 
 import math
@@ -28,6 +33,33 @@ class MelodyEvent(BaseModel):
     start_beat: float
     duration_beats: float
     velocity: int
+    tension: float = 0.0  # Accumulated harmonic tension (gravity field potential)
+
+
+def compute_harmonic_pull(
+    pitch: int,
+    chord_tones: List[int],
+    current_tension: float,
+    distance_weight: float = 1.0
+) -> float:
+    """
+    Computes gravitational pull from chord tones.
+    Closer chord tones = stronger pull. Accumulated tension resists pull.
+    """
+    if not chord_tones:
+        return 0.0
+    
+    # Find nearest chord tone
+    nearest_chord = min(chord_tones, key=lambda c: abs(pitch - c))
+    distance = abs(pitch - nearest_chord)
+    
+    # Gravitational pull: inverse square law with harmonic weighting
+    gravitational_force = distance_weight / (1.0 + distance ** 2)
+    
+    # Tension resists gravitational pull
+    net_pull = gravitational_force - (current_tension * 0.5)
+    
+    return max(0.0, net_pull)
 
 
 def select_weighted_pitch(
@@ -36,10 +68,11 @@ def select_weighted_pitch(
     current_chord: List[int],
     style: StyleSignature,
     rng: random.Random,
+    current_tension: float = 0.0,
 ) -> int:
     """
-    Selects the next pitch using weighted contour motion.
-    High weight for stepwise motion (1-3 semitones) and chord tones.
+    Selects the next pitch using harmonic gravity field.
+    Pitch selection influenced by gravitational pull from chord tones and accumulated tension.
     """
     if not scale_notes:
         return prev_pitch
@@ -49,6 +82,8 @@ def select_weighted_pitch(
 
     for note in scale_notes:
         interval = abs(note - prev_pitch)
+        
+        # Base contour weights (preserves existing behavior)
         if interval == 0:
             w = 4.0 * style.repetition_tendency
         elif 1 <= interval <= 3:
@@ -62,8 +97,14 @@ def select_weighted_pitch(
         else:
             w = 0.2 * max(0.1, 1.0 - (interval / 24.0))
 
+        # Harmonic gravity field modification
         if note % 12 in chord_pcs:
-            w *= 2.2
+            # Chord tones get harmonic pull boost
+            harmonic_pull = compute_harmonic_pull(note, current_chord, current_tension)
+            w *= (2.2 + harmonic_pull)
+        else:
+            # Non-chord tones get tension penalty
+            w *= max(0.1, 1.0 - current_tension)
 
         weights.append(max(0.01, w))
 
@@ -73,6 +114,52 @@ def select_weighted_pitch(
 def snap_to_16th(beat: float) -> float:
     """Quantizes beat position to nearest 16th-note grid (0.25 steps)."""
     return round(beat * 4.0) / 4.0
+
+
+def detect_resolution_window(beat_position: float, phrase_length: float = 8.0) -> float:
+    """
+    Calculates magnetic pull strength based on structural position.
+    Near phrase boundaries = stronger magnetic pull toward chord tones.
+    Returns strength in [0.0, 1.0].
+    """
+    distance_to_boundary = min(
+        beat_position % phrase_length, 
+        phrase_length - (beat_position % phrase_length)
+    )
+    # Normalize: 0.0 at boundaries, 1.0 at center of phrase
+    magnetic_strength = 1.0 - (distance_to_boundary / (phrase_length / 2.0))
+    return max(0.0, min(1.0, magnetic_strength))
+
+
+def magnetic_collapse(
+    current_pitch: int,
+    target_chord: List[int],
+    scale_notes: List[int],
+    magnetic_strength: float,
+    rng: random.Random,
+) -> int:
+    """
+    Force trajectory collapse to most contextually required anchor pitch.
+    Stronger magnetic strength = higher probability of chord tone selection.
+    """
+    if magnetic_strength < 0.3:
+        return current_pitch  # Not in resolution window
+    
+    chord_pcs = [c % 12 for c in target_chord]
+    available_anchors = [n for n in scale_notes if n % 12 in chord_pcs]
+    
+    if not available_anchors:
+        return current_pitch
+    
+    # Weight by distance to current pitch (prefer nearest anchor)
+    distances = [abs(n - current_pitch) for n in available_anchors]
+    weights = [1.0 / (1.0 + d) for d in distances]
+    
+    # Apply magnetic strength to bias toward anchors
+    if rng.random() < magnetic_strength:
+        return rng.choices(available_anchors, weights=weights)[0]
+    
+    return current_pitch
 
 
 def _generate_phrase_arc(num_notes: int, rng: random.Random) -> List[float]:
@@ -133,6 +220,9 @@ def generate_melody(
     scale_notes = [n for n in all_scale_notes if 60 <= n <= 84]
     if not scale_notes:
         scale_notes = [root_midi]
+    
+    # Initialize harmonic gravity field tracking
+    accumulated_tension = 0.0
 
     # --- 1. GENERATE 2-BAR MOTIF RHYTHM & SKELETON ---
     motif_durations: List[float] = []
@@ -251,6 +341,27 @@ def generate_melody(
             if active_mask[i]:
                 pitch = block_pitches[i]
                 
+                # --- HARMONIC GRAVITY FIELD TENSION TRACKING ---
+                # Calculate distance from current chord
+                current_chord_pcs = [c % 12 for c in block_chord]
+                is_chord_tone = (pitch % 12) in current_chord_pcs
+                
+                if not is_chord_tone:
+                    # Non-chord tones accumulate tension
+                    nearest_chord_tone = min(block_chord, key=lambda c: abs(pitch - c))
+                    tension_increment = abs(pitch - nearest_chord_tone) * dur
+                    accumulated_tension += tension_increment
+                else:
+                    # Chord tones release tension
+                    accumulated_tension *= 0.7  # Tension decay on chord tones
+                
+                # --- MAGNETIC COLLAPSE AT RESOLUTION WINDOWS ---
+                magnetic_strength = detect_resolution_window(current_beat_snapped, 8.0)
+                if magnetic_strength > 0.6 and not is_chord_tone:
+                    # Force collapse to chord tone near phrase boundaries
+                    pitch = magnetic_collapse(pitch, block_chord, scale_notes, magnetic_strength, rng)
+                    accumulated_tension *= 0.5  # Tension release on collapse
+                
                 # --- ORGANIC PHRASING VELOCITY DYNAMICS (DYNAMIC BREATHING) ---
                 # 1. Base velocity
                 base_vel = 92
@@ -280,7 +391,8 @@ def generate_melody(
                     midi_note=pitch,
                     start_beat=current_beat_snapped,
                     duration_beats=dur * 0.9,
-                    velocity=final_vel
+                    velocity=final_vel,
+                    tension=accumulated_tension
                 ))
 
             current_beat = snap_to_16th(current_beat + dur)
