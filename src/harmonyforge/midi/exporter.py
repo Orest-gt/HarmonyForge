@@ -52,7 +52,7 @@ def export_loop(
         for pitch in chord:
             inst_chord.notes.append(pretty_midi.Note(
                 velocity=90, pitch=pitch,
-                start=t, end=t + bar_dur - 0.05,
+                start=t, end=t + bar_dur,
             ))
         t += bar_dur
     humanize_instrument(inst_chord)
