@@ -63,4 +63,4 @@ Thank you for your interest in contributing to HarmonyForge!
 
 ## Questions?
 
-Contact: orestis@harmonyforge.io
+Contact: orestisgatos@gmail.com
