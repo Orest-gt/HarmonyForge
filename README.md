@@ -15,6 +15,8 @@ It is NOT a random chord generator. It is an aesthetic engine that models produc
 - **NLP Prompt Parser:** Use natural language (`--prompt "evil luxury cinematic"`) to directly map emotions to harmonic complexity and rhythmic density.
 - **Natural Language CLI:** The `make` command understands plain English queries like `"dark travis x metro f# 8 bars"`.
 - **Professional MIDI Export:** Exports clean, timeline-synced MIDI stems with proper humanization and swing templates.
+- **Producer Style Database:** Built-in profiles for top producers (Nick Mira, Metro Boomin, Southside, Tay Keith, Pierre Bourne, Mike Dean, Murda Beatz, ATL Jacob, Ronny J, Frank Dukes).
+- **Professional Generation Template:** Strict API patterns for consistent, error-free beat generation.
 - **Error Handling & Logging:** Robust error handling with proper logging for debugging and monitoring.
 - **Type Safety:** Full type hints and mypy compatibility for better IDE support and code quality.
 
@@ -27,7 +29,7 @@ HarmonyForge is built for speed and uses `uv` for ultra-fast dependency manageme
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and install HarmonyForge
-git clone https://github.com/your-username/HarmonyForge.git
+git clone https://github.com/Orest-gt/HarmonyForge.git
 cd HarmonyForge
 uv pip install -e ".[ai]"
 ```
@@ -60,6 +62,41 @@ uv run harmonyforge generate \
 
 Check the `./output` folder for your MIDI stems!
 
+## 🎛️ Professional Beat Generation
+
+For production-ready beats, use the professional generation template:
+
+```bash
+# Copy the template for your beat
+cp TEMPLATE_GENERATE_BEAT.py generate_my_beat.py
+
+# Edit the musical parameters section:
+# - Choose producer style (NICK_MIRA, METRO_BOOMIN, etc.)
+# - Set BPM, key, scale, bars
+# - Configure swing style
+
+# Run generation
+python generate_my_beat.py
+```
+
+**Available Producer Styles:**
+- **Nick Mira**: Dark melodic trap, emotional piano, heavy 808s
+- **Metro Boomin**: Dark cinematic trap, heavy syncopation
+- **Southside**: Aggressive trap, complex rhythms
+- **Tay Keith**: Minimal trap, hard-hitting 808s
+- **Pierre Bourne**: Melodic trap, synth-heavy
+- **Mike Dean**: Emotional neo-soul, rich harmonies
+- **Murda Beatz**: Dark trap, intricate patterns
+- **ATL Jacob**: Melodic trap, vocal-ready
+- **Ronny J**: Experimental trap, distorted elements
+- **Frank Dukes**: Professional pop/r&b, polished production
+
+**Output:**
+- DAW-ready MIDI stems (stem_chords.mid, stem_melody.mid, stem_bass.mid, stem_counter_melody.mid)
+- Proper time signature metadata (4/4)
+- Tempo-accurate timing
+- Genre-appropriate swing templates (straight, trap_bounce, dilla_swing, drill_push, afro_triplet)
+
 ## 🧪 Validation & Benchmarks
 
 HarmonyForge v2.1.0 has been rigorously tested:
@@ -67,6 +104,8 @@ HarmonyForge v2.1.0 has been rigorously tested:
 - **Type Safety:** Comprehensive type hints for better IDE support and error prevention.
 - **Error Handling:** Robust exception handling throughout the codebase.
 - **Security:** No unsafe system calls or hardcoded credentials.
+- **Timing Accuracy:** MIDI timing verified against Standard MIDI Files specification.
+- **API Compliance:** Professional generation template ensures consistent API usage.
 
 To run the test suite:
 ```bash
