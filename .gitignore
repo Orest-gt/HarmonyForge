@@ -1,6 +1,8 @@
 .venv/
+venv/
+env/
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
 .Python
@@ -12,10 +14,28 @@ dist/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+
+# Project-local generated artifacts
 output/
 benchmark_out/
+output_v1/
+ableton_nick_mira/
 # Only ignore MIDI files in output directories, not in production folders
 output/*.mid
 benchmark_out/*.mid
 demo_output/*.mid
 test_output/*.mid
+test_mido.mid
