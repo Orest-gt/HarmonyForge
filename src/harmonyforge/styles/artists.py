@@ -7,7 +7,7 @@ from harmonyforge.styles.genome import ArtistProfile, StyleSignature
 
 TRAVIS_SCOTT = ArtistProfile(
     name="Travis Scott",
-    aliases=["La Flame"],
+    aliases=["La Flame", "Travis", "Cactus Jack", "Jake"],
     signature=StyleSignature(
         harmonic_complexity=0.7,
         dissonance_tolerance=0.75,
