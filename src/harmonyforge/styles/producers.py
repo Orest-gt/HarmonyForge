@@ -71,6 +71,9 @@ PRODUCERS_DB: Dict[str, ProducerProfile] = {
     # Can be extended massively
 }
 
+# Public alias used by the CLI info command
+PRODUCERS = PRODUCERS_DB
+
 def get_producer(name: str) -> ProducerProfile:
     clean_name = name.lower().replace(" ", "_")
     if clean_name not in PRODUCERS_DB:

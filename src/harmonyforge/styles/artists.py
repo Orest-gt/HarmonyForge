@@ -50,6 +50,9 @@ ARTISTS_DB: Dict[str, ArtistProfile] = {
     "future": FUTURE,
 }
 
+# Public alias used by the CLI info command
+ARTISTS = ARTISTS_DB
+
 def get_artist(name: str) -> ArtistProfile:
     clean_name = name.lower().replace(" ", "_")
     if clean_name not in ARTISTS_DB:
