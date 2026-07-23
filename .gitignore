@@ -33,6 +33,12 @@ output/
 benchmark_out/
 output_v1/
 ableton_nick_mira/
+tmp_test_output/
+
+# Local analysis / scratch files
+inspect_cli.py
+midi_analysis_report.txt
+
 # Only ignore MIDI files in output directories, not in production folders
 output/*.mid
 benchmark_out/*.mid

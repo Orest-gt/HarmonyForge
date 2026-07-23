@@ -15,7 +15,7 @@ It is NOT a random chord generator. It is an aesthetic engine that models produc
 - **NLP Prompt Parser:** Use natural language (`--prompt "evil luxury cinematic"`) to directly map emotions to harmonic complexity and rhythmic density.
 - **Natural Language CLI:** The `make` command understands plain English queries like `"dark travis x metro f# 8 bars"`.
 - **Professional MIDI Export:** Exports clean, timeline-synced MIDI stems with proper humanization and swing templates.
-- **Producer Style Database:** Built-in profiles for top producers (Nick Mira, Metro Boomin, Southside, Tay Keith, Pierre Bourne, Mike Dean, Murda Beatz, ATL Jacob, Ronny J, Frank Dukes).
+- **Producer Style Database:** Built-in profiles for leading artists and producers across trap, drill, R&B, and melodic styles, including expanded entries for Drake, Kendrick Lamar, Playboi Carti, 40, Wheezy, Boi-1da, and Hit-Boy.
 - **Professional Generation Template:** Strict API patterns for consistent, error-free beat generation.
 - **Error Handling & Logging:** Robust error handling with proper logging for debugging and monitoring.
 - **Type Safety:** Full type hints and mypy compatibility for better IDE support and code quality.
@@ -24,6 +24,7 @@ It is NOT a random chord generator. It is an aesthetic engine that models produc
 
 Recent work on the generation engine has improved melodic phrasing at phrase boundaries:
 - **Boundary-aware collapse:** melody resolution now settles to the nearest active chord tone at cadence points and respects chord changes cleanly.
+- **Expanded style profiles:** the artist/producer database now includes richer, more realistic signatures for modern trap, drill, and R&B-inspired production.
 - **Regression coverage:** dedicated crash tests now cover inversion handling, octave jump behavior, and boundary resolution instinct.
 - **Repository hygiene:** generated MIDI outputs, caches, and local-only artifacts are now ignored so the repo stays clean for collaborators.
 
