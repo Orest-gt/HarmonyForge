@@ -1,10 +1,10 @@
 """
 808 Bass generator.
-Creates syncopated patterns, octave jumps, and standard MIDI pitch bends for slides.
+Creates syncopated patterns, octave jumps, flexible bass anchoring, and standard MIDI pitch bends for slides.
 """
 
 import random
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 
 from harmonyforge.core.config import config
@@ -15,48 +15,75 @@ class BassEvent(BaseModel):
     start_beat: float
     duration_beats: float
     velocity: int
-    pitch_bend: int = 0 # 0 means no bend, ranges from -8192 to 8191
+    pitch_bend: int = 0  # 0 means no bend, ranges from -8192 to 8191
 
 def generate_808_pattern(progression_midi: List[List[int]], style: StyleSignature, bpm: int) -> List[BassEvent]:
     """
-    Generates a trap-style 808 pattern based on the progression roots.
+    Generates a trap-style 808 pattern based on progression roots and chord tones.
+    Features flexible root_anchor_prob, pedal point persistence, and octave jumps.
     """
     if config.seed is not None:
         rng = random.Random(config.seed)
     else:
         rng = random.Random()
         
-    events = []
+    events: List[BassEvent] = []
+    prev_bass_pitch: Optional[int] = None
     
-    # Simple generation: 1 bar per chord (4 beats)
     for i, chord in enumerate(progression_midi):
-        root = chord[0]
-        # Ensure it's in the bass range (C1-C3 roughly)
-        while root > 48:
-            root -= 12
-        while root < 24:
-            root += 12
+        # Transpose chord tones to bass register (C1 to C3 / 24 to 48)
+        bass_candidates: List[int] = []
+        for pitch in chord:
+            p = pitch
+            while p > 48:
+                p -= 12
+            while p < 24:
+                p += 12
+            bass_candidates.append(p)
             
+        root_bass = bass_candidates[0]
         current_beat = i * 4.0
         
-        # Beat 1: Always hit the root
+        # --- BEAT 1 BASS ANCHOR / PEDAL LOGIC ---
+        if prev_bass_pitch is not None and rng.random() > style.root_anchor_prob and rng.random() < style.repetition_tendency:
+            # Pedal point persistence: keep previous bar's bass pitch
+            beat1_pitch = prev_bass_pitch
+        elif rng.random() <= style.root_anchor_prob:
+            # Default to Root note
+            beat1_pitch = root_bass
+        else:
+            # Inversion / 3rd or 5th bass choice
+            beat1_pitch = rng.choice(bass_candidates)
+
+        prev_bass_pitch = beat1_pitch
+
         velocity = rng.randint(100, 127)
-        events.append(BassEvent(midi_note=root, start_beat=current_beat, duration_beats=1.0, velocity=velocity))
+        events.append(BassEvent(
+            midi_note=beat1_pitch,
+            start_beat=current_beat,
+            duration_beats=1.0,
+            velocity=velocity
+        ))
         
-        # Decide if we add syncopated hits or octave jumps
+        # --- SYNCOPATION & SLIDE LOGIC ---
         if rng.random() < style.syncopation_level:
-            # Syncopated hit on the 'and' of 2 or 3
             sync_beat = current_beat + rng.choice([1.5, 2.5, 3.5])
-            jump = rng.choice([0, 12]) if rng.random() > 0.5 else 0
-            vel = rng.randint(80, 110)
             
-            # Decide if this is a slide (pitch bend)
-            bend = 0
-            if rng.random() < 0.3: # 30% chance to pitch bend up a fifth or octave
-                bend = rng.choice([8191]) # Max bend up
+            # Octave jump vs chord tone inversion
+            if rng.random() < 0.45:
+                # Stylistic octave jump
+                sync_pitch = beat1_pitch + 12 if (beat1_pitch + 12) <= 54 else beat1_pitch
+            else:
+                sync_pitch = rng.choice(bass_candidates)
                 
+            bend = 0
+            if rng.random() < (0.2 + 0.3 * style.syncopation_level):
+                # Pitch bend slide (8191 = max bend up)
+                bend = 8191
+                
+            vel = rng.randint(85, 115)
             events.append(BassEvent(
-                midi_note=root + jump,
+                midi_note=sync_pitch,
                 start_beat=sync_beat,
                 duration_beats=0.5,
                 velocity=vel,

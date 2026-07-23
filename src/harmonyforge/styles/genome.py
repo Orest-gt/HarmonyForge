@@ -24,6 +24,7 @@ class StyleSignature(BaseModel):
     # Structural Parameters
     repetition_tendency: float = Field(default=0.8, ge=0.0, le=1.0)
     melodic_range: int = Field(default=12, description="Typical range in semitones")
+    root_anchor_prob: float = Field(default=0.8, ge=0.0, le=1.0)
     
     # Aesthetic / Emotional
     darkness_level: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -56,6 +57,7 @@ class StyleSignature(BaseModel):
             syncopation_level=blend(self.syncopation_level, other.syncopation_level),
             repetition_tendency=blend(self.repetition_tendency, other.repetition_tendency),
             melodic_range=int(blend(self.melodic_range, other.melodic_range)),
+            root_anchor_prob=blend(self.root_anchor_prob, other.root_anchor_prob),
             darkness_level=blend(self.darkness_level, other.darkness_level),
             tension_preference=blend(self.tension_preference, other.tension_preference),
             preferred_scales=list(set(self.preferred_scales + other.preferred_scales)),
