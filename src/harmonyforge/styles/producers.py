@@ -64,10 +64,54 @@ MIKE_DEAN = ProducerProfile(
     )
 )
 
+ATL_JACOB = ProducerProfile(
+    name="ATL Jacob",
+    aliases=["Jacob Luttrell", "ATL"],
+    signature=StyleSignature(
+        # Rich, melodic trap — Drake "Rich Flex", 21 Savage, Future collab palette
+        harmonic_complexity=0.75,
+        dissonance_tolerance=0.55,
+        modal_interchange_prob=0.35,   # Borrowing from parallel major (Neo-Soul touch)
+        secondary_dominant_prob=0.25,
+        rhythmic_density=0.55,
+        syncopation_level=0.65,
+        repetition_tendency=0.65,
+        melodic_range=18,
+        darkness_level=0.65,           # Dark but melodically warm — not pitch-black
+        tension_preference=0.70,
+        preferred_scales=["minor", "harmonic_minor", "dorian"],
+        preferred_chord_types=["min7", "maj7", "min9", "dom7"],
+        preferred_bpm_range=(130, 148)
+    )
+)
+
+TAY_KEITH = ProducerProfile(
+    name="Tay Keith",
+    aliases=["Tay Keith FUNK", "Keith James"],
+    signature=StyleSignature(
+        # Memphis drill aggression — Look Alive, Sicko Mode, Bounce Out With That
+        harmonic_complexity=0.30,      # Sparse melodies, raw chords
+        dissonance_tolerance=0.80,     # Menacing tension baked in
+        modal_interchange_prob=0.10,
+        secondary_dominant_prob=0.05,
+        rhythmic_density=0.85,         # Very dense, punchy — classic Memphis energy
+        syncopation_level=0.88,        # Off-beat kicks, staggered hi-hats
+        repetition_tendency=0.78,
+        melodic_range=10,              # Tight, aggressive range
+        darkness_level=0.92,
+        tension_preference=0.92,
+        preferred_scales=["minor", "phrygian"],   # Phrygian b2 = menace
+        preferred_chord_types=["min", "dim", "min7"],
+        preferred_bpm_range=(148, 172)
+    )
+)
+
 PRODUCERS_DB: Dict[str, ProducerProfile] = {
     "metro_boomin": METRO_BOOMIN,
     "southside": SOUTHSIDE,
     "mike_dean": MIKE_DEAN,
+    "atl_jacob": ATL_JACOB,
+    "tay_keith": TAY_KEITH,
     # Can be extended massively
 }
 
