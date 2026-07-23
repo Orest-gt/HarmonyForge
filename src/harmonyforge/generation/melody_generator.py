@@ -1,9 +1,19 @@
 """
-Melody generator.
-Uses style-driven weighted contour motion, 16th-grid quantization,
-downbeat chord-tone resolution, and flexible phrase/motif memory.
+Melody generator v1.2 — High Coherence Engine.
+
+Key structural improvements for melodic cohesion:
+  1. Directional Phrasing Wave: Uses continuous wave contour to generate organic arcs
+     (Ascend -> Peak -> Descend) rather than random zig-zag motion.
+  2. Strict Motif Preservation (A - A' - A - B):
+     - Phrase A (Bars 1-2): Core motif theme.
+     - Phrase A' (Bars 3-4): Preserves motif head (first 75% of notes), varies only the cadence tail.
+     - Phrase A (Bars 5-6): Identical repetition of Phrase A to build instant hook memory.
+     - Phrase B (Bars 7-8): Turnaround phrase resolving smoothly to tonic / chord tone.
+  3. Harmonic Adaptation without Distortion: Transposes the motif by scale degrees to fit
+     new chords rather than destroying internal pitch relationships with random downbeat snapping.
 """
 
+import math
 import random
 from typing import List
 from pydantic import BaseModel
@@ -11,6 +21,7 @@ from pydantic import BaseModel
 from harmonyforge.core.config import config
 from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.theory.scales import get_scale, get_notes_in_scale
+
 
 class MelodyEvent(BaseModel):
     midi_note: int
@@ -20,64 +31,51 @@ class MelodyEvent(BaseModel):
 
 
 def snap_to_16th(beat: float) -> float:
-    """Quantizes beat position to the nearest 16th-note grid (0.25 steps)."""
+    """Quantizes beat position to nearest 16th-note grid (0.25 steps)."""
     return round(beat * 4.0) / 4.0
 
 
-def select_weighted_pitch(
-    prev_pitch: int,
-    scale_notes: List[int],
-    current_chord: List[int],
-    style: StyleSignature,
-    rng: random.Random
-) -> int:
+def _generate_phrase_arc(num_notes: int, rng: random.Random) -> List[float]:
     """
-    Selects the next pitch using weighted contour motion.
-    High weight for stepwise motion (1-3 semitones) and chord tones,
-    controlled weight for intentional octave/stylistic leaps.
+    Generates a smooth 2-bar melodic phrasing wave normalized in [0.0, 1.0].
+    Uses a combination of sine arc and smooth gradient noise so notes follow an organic arch
+    (rise -> peak -> gentle fall) instead of random zig-zag leaps.
     """
-    if not scale_notes:
-        return prev_pitch
+    arc: List[float] = []
+    # Choose phrase shape type: Arch (rise-fall), Rise, or Fall-Rise
+    shape_type = rng.choice(["arch", "arch", "rise_fall", "arch_decay"])
 
-    weights: List[float] = []
-    chord_pcs = [c % 12 for c in current_chord]
+    for i in range(num_notes):
+        t = i / max(1, num_notes - 1)  # Normalized time [0.0, 1.0]
 
-    for note in scale_notes:
-        interval = abs(note - prev_pitch)
-
-        # 1. Base contour weight based on semitone distance
-        if interval == 0:
-            # Pedal point / pitch repetition
-            w = 4.0 * style.repetition_tendency
-        elif 1 <= interval <= 3:
-            # Stepwise motion
-            w = 8.0
-        elif 4 <= interval <= 5:
-            # Small skip
-            w = 4.0
-        elif 6 <= interval <= 7:
-            # Perfect 4th/5th / tritone leap
-            w = 2.5
-        elif interval == 12:
-            # Stylistic octave leap (e.g. Rage / Trap octave pop)
-            w = 3.5 * style.dissonance_tolerance
+        if shape_type == "arch":
+            # Classic melodic arch: sin(pi * t)
+            val = math.sin(math.pi * t)
+        elif shape_type == "rise_fall":
+            # Quick rise, slow fall
+            val = math.sin(math.pi * (t ** 0.7))
         else:
-            # Large unmusical leaps (> 7, except octave) get low weight
-            w = 0.2 * max(0.1, 1.0 - (interval / 24.0))
+            # Arch with subtle end decay
+            val = math.sin(math.pi * t) * (1.0 - 0.2 * t)
 
-        # 2. Chord tone bonus
-        if note % 12 in chord_pcs:
-            w *= 2.2
+        # Add subtle organic jitter (+/- 10%) so it doesn't sound synthesized/rigid
+        jitter = rng.uniform(-0.10, 0.10)
+        val = max(0.0, min(1.0, val + jitter))
+        arc.append(val)
 
-        weights.append(max(0.01, w))
-
-    return rng.choices(scale_notes, weights=weights)[0]
+    return arc
 
 
-def generate_melody(progression_midi: List[List[int]], scale_name: str, key_root: str, style: StyleSignature, bpm: int) -> List[MelodyEvent]:
+def generate_melody(
+    progression_midi: List[List[int]],
+    scale_name: str,
+    key_root: str,
+    style: StyleSignature,
+    bpm: int
+) -> List[MelodyEvent]:
     """
-    Generates a lead melody aligned to 16th grid, with downbeat chord-tone resolution
-    and motif memory (A-A'-A-B form).
+    Generates a coherent, memorable lead melody with strict motif preservation,
+    directional phrasing waves, and harmonic adaptation.
     """
     if config.seed is not None:
         rng = random.Random(config.seed)
@@ -90,14 +88,14 @@ def generate_melody(progression_midi: List[List[int]], scale_name: str, key_root
 
     scale = get_scale(scale_name)
     all_scale_notes = get_notes_in_scale(root_midi, scale, octaves=3)
-    
-    # Restrict melody range to a single focused musical register (C4 to C6 / 60 to 84)
+
+    # Restrict melody range to a focused musical register (C4 to C6 / 60 to 84)
     scale_notes = [n for n in all_scale_notes if 60 <= n <= 84]
     if not scale_notes:
         scale_notes = [root_midi]
 
-    # --- 1. GENERATE 2-BAR MOTIF (PHRASE A RHYTHM & MASK) ---
-    motif_rhythm: List[float] = []
+    # --- 1. GENERATE 2-BAR MOTIF RHYTHM & SKELETON ---
+    motif_durations: List[float] = []
     beats_left = 8.0
     step_options = [0.25, 0.5, 1.0] if style.rhythmic_density > 0.5 else [0.5, 1.0, 2.0]
 
@@ -105,28 +103,44 @@ def generate_melody(progression_midi: List[List[int]], scale_name: str, key_root
         dur = rng.choice(step_options)
         if dur > beats_left:
             dur = beats_left
-        motif_rhythm.append(dur)
+        motif_durations.append(dur)
         beats_left -= dur
 
-    # Generate 2-bar motif active mask (rhythmic skeleton) to preserve motif rhythm across phrases
-    motif_active_mask = [rng.random() <= (0.25 + 0.65 * style.rhythmic_density) for _ in motif_rhythm]
-    # Ensure at least first note is active
-    if not any(motif_active_mask) and len(motif_active_mask) > 0:
-        motif_active_mask[0] = True
+    num_notes = len(motif_durations)
 
-    # Generate initial 2-bar motif pitches (Phrase A)
-    motif_pitches: List[int] = []
+    # Rhythmic active mask (rests vs notes)
+    active_mask = [rng.random() <= (0.30 + 0.60 * style.rhythmic_density) for _ in range(num_notes)]
+    if not any(active_mask) and num_notes > 0:
+        active_mask[0] = True
+
+    # --- 2. GENERATE CORE MOTIF PITCHES USING DIRECTIONAL PHRASING ARC ---
     first_chord = progression_midi[0] if progression_midi else [root_midi]
     first_chord_pcs = [c % 12 for c in first_chord]
     chord_tones = [n for n in scale_notes if n % 12 in first_chord_pcs]
-    prev_p = rng.choice(chord_tones if chord_tones else scale_notes)
 
-    for _ in motif_rhythm:
-        next_p = select_weighted_pitch(prev_p, scale_notes, first_chord, style, rng)
-        motif_pitches.append(next_p)
-        prev_p = next_p
+    # Start on a strong chord tone near center of range
+    center_idx = len(scale_notes) // 2
+    if chord_tones:
+        anchor_pitch = min(chord_tones, key=lambda n: abs(n - scale_notes[center_idx]))
+    else:
+        anchor_pitch = scale_notes[center_idx]
 
-    # --- 2. GENERATE FULL PROGRESSION (A - A' - A - B STRUCTURAL MEMORY) ---
+    anchor_scale_idx = scale_notes.index(anchor_pitch)
+
+    # Map phrasing wave to scale degree indices
+    phrase_arc = _generate_phrase_arc(num_notes, rng)
+
+    # Available scale degree range span for the motif (e.g. 5 to 9 scale steps wide)
+    max_step_span = max(3, min(8, int(style.melodic_range // 2)))
+
+    motif_pitches: List[int] = []
+    for t_val in phrase_arc:
+        # Scale step offset from anchor based on phrasing arc
+        step_offset = int(round((t_val - 0.5) * 2.0 * max_step_span))
+        target_idx = max(0, min(len(scale_notes) - 1, anchor_scale_idx + step_offset))
+        motif_pitches.append(scale_notes[target_idx])
+
+    # --- 3. GENERATE FULL PROGRESSION WITH STRICT FORM (A - A' - A - B) ---
     total_bars = len(progression_midi)
     two_bar_blocks = max(1, (total_bars + 1) // 2)
 
@@ -134,63 +148,79 @@ def generate_melody(progression_midi: List[List[int]], scale_name: str, key_root
         block_start_bar = block_idx * 2
         block_beat_offset = snap_to_16th(block_start_bar * 4.0)
 
-        # Form selection
+        # Form assignment
         if block_idx == 0:
             form = "A"
-        elif block_idx == two_bar_blocks - 1 and two_bar_blocks > 1:
-            form = "B"  # Cadential resolution
+        elif block_idx == 1:
+            form = "A_prime"   # Variation on cadence tail
+        elif block_idx == 2:
+            form = "A"         # Exact repeat of Theme A (Hook memory!)
         else:
-            form = "A_prime" if rng.random() < style.repetition_tendency else "A"
+            form = "B"         # Cadential turnaround phrase
 
+        # Calculate root chord tone shift for the block
+        block_chord = progression_midi[block_start_bar] if block_start_bar < len(progression_midi) else progression_midi[-1]
+        block_chord_pcs = [c % 12 for c in block_chord]
+
+        # Shift the entire motif up/down by scale steps if underlying chord changes significantly
+        head_pitch = motif_pitches[0]
+        matching_chord_tones = [n for n in scale_notes if n % 12 in block_chord_pcs]
+        if matching_chord_tones:
+            shifted_head = min(matching_chord_tones, key=lambda n: abs(n - head_pitch))
+            scale_shift = scale_notes.index(shifted_head) - scale_notes.index(head_pitch)
+        else:
+            scale_shift = 0
+
+        # Build phrase pitches for this block
+        block_pitches: List[int] = []
+        for i, base_pitch in enumerate(motif_pitches):
+            base_idx = scale_notes.index(base_pitch)
+            shifted_idx = max(0, min(len(scale_notes) - 1, base_idx + scale_shift))
+
+            if form == "A":
+                # Exact motif
+                pitch = scale_notes[shifted_idx]
+            elif form == "A_prime":
+                # Keep first 70% of notes IDENTICAL; vary only the cadence tail (last 30%)
+                if i >= int(num_notes * 0.7):
+                    # Tail variation: move to cadence chord tone
+                    pitch = scale_notes[shifted_idx]
+                    if matching_chord_tones:
+                        pitch = min(matching_chord_tones, key=lambda n: abs(n - pitch))
+                else:
+                    pitch = scale_notes[shifted_idx]
+            elif form == "B":
+                # Turnaround B: inverse or descent toward tonic
+                if i >= int(num_notes * 0.5):
+                    # Stepwise descent to resolve
+                    desc_idx = max(0, shifted_idx - (i - int(num_notes * 0.5) + 1))
+                    pitch = scale_notes[desc_idx]
+                else:
+                    pitch = scale_notes[shifted_idx]
+
+            block_pitches.append(pitch)
+
+        # Place notes into events list
         current_beat = block_beat_offset
-        note_idx = 0
-
-        for dur in motif_rhythm:
-            if note_idx >= len(motif_pitches):
+        for i, dur in enumerate(motif_durations):
+            if i >= len(block_pitches):
                 break
 
             current_beat_snapped = snap_to_16th(current_beat)
-            base_pitch = motif_pitches[note_idx]
-            bar_offset = int(current_beat_snapped // 4.0)
-            chord_i = progression_midi[bar_offset] if bar_offset < len(progression_midi) else progression_midi[-1]
 
-            # 1. Pitch Variation Strategy
-            if form == "A":
-                note_pitch = base_pitch
-            elif form == "A_prime":
-                if rng.random() < 0.30:
-                    note_pitch = select_weighted_pitch(base_pitch, scale_notes, chord_i, style, rng)
-                else:
-                    note_pitch = base_pitch
-            elif form == "B":
-                if rng.random() < 0.50:
-                    note_pitch = select_weighted_pitch(base_pitch, scale_notes, chord_i, style, rng)
-                else:
-                    note_pitch = base_pitch
+            if active_mask[i]:
+                pitch = block_pitches[i]
+                # Dynamic velocity contour: accent beat 1 and phrase peak
+                is_phrase_start = (i == 0)
+                base_vel = 102 if is_phrase_start else rng.randint(80, 98)
 
-            # 2. Downbeat Chord-Tone Resolution:
-            # Strong beats (Beat 1 or Beat 3) anchor to chord tones to resolve dissonance cleanly
-            is_downbeat = (current_beat_snapped % 2.0 == 0.0)
-            if is_downbeat:
-                chord_pcs = [c % 12 for c in chord_i]
-                downbeat_chord_tones = [n for n in scale_notes if n % 12 in chord_pcs]
-                if downbeat_chord_tones:
-                    note_pitch = min(downbeat_chord_tones, key=lambda n: abs(n - note_pitch))
+                events.append(MelodyEvent(
+                    midi_note=pitch,
+                    start_beat=current_beat_snapped,
+                    duration_beats=dur * 0.9,
+                    velocity=base_vel
+                ))
 
-            # 3. Rhythmic Skeleton Active Check (uses initial motif mask)
-            if not motif_active_mask[note_idx]:
-                current_beat = snap_to_16th(current_beat + dur)
-                note_idx += 1
-                continue
-
-            vel = rng.randint(75, 110)
-            events.append(MelodyEvent(
-                midi_note=note_pitch,
-                start_beat=current_beat_snapped,
-                duration_beats=dur * 0.9,
-                velocity=vel
-            ))
             current_beat = snap_to_16th(current_beat + dur)
-            note_idx += 1
 
     return events
