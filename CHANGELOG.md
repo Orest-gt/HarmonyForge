@@ -2,6 +2,15 @@
 
 All notable changes to HarmonyForge will be documented in this file.
 
+## [Unreleased] - 2026-07-23
+
+### Fixed
+- **Harmonic Gravity Collapse:** Boundary resolution now collapses to the nearest active chord tone and handles chord changes more musically at phrase cadences.
+- **Regression Tests:** Added crash-style regression coverage for inversion handling, octave elasticity, and boundary resolution behavior.
+
+### Improved
+- **Repository Hygiene:** Expanded ignore rules to exclude generated MIDI output, local caches, and editor-specific clutter from the shared repository.
+
 ## [2.1.0] - 2026-07-23
 
 ### Added

@@ -20,7 +20,14 @@ It is NOT a random chord generator. It is an aesthetic engine that models produc
 - **Error Handling & Logging:** Robust error handling with proper logging for debugging and monitoring.
 - **Type Safety:** Full type hints and mypy compatibility for better IDE support and code quality.
 
-## 📦 Installation
+## � Recent Updates
+
+Recent work on the generation engine has improved melodic phrasing at phrase boundaries:
+- **Boundary-aware collapse:** melody resolution now settles to the nearest active chord tone at cadence points and respects chord changes cleanly.
+- **Regression coverage:** dedicated crash tests now cover inversion handling, octave jump behavior, and boundary resolution instinct.
+- **Repository hygiene:** generated MIDI outputs, caches, and local-only artifacts are now ignored so the repo stays clean for collaborators.
+
+## �📦 Installation
 
 HarmonyForge is built for speed and uses `uv` for ultra-fast dependency management.
 
