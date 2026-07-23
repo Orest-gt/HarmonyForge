@@ -35,6 +35,9 @@ ONTOLOGY: Dict[str, Dict[str, float]] = {
     "rage":       {"dissonance_tolerance": 0.2, "rhythmic_density": 0.2},
     "melodic":    {"harmonic_complexity": 0.15, "modal_interchange_prob": 0.1},
     "dreamy":     {"rhythmic_density": -0.15, "harmonic_complexity": 0.1, "modal_interchange_prob": 0.15},
+    "soul":       {"harmonic_complexity": 0.1, "modal_interchange_prob": 0.15, "tension_preference": 0.1},
+    "neo":        {"harmonic_complexity": 0.08, "modal_interchange_prob": 0.1},
+    "neo-soul":   {"harmonic_complexity": 0.18, "modal_interchange_prob": 0.25, "tension_preference": 0.1, "syncopation_level": 0.05},
     # Rhythm / Groove
     "bouncy":     {"syncopation_level": 0.2, "rhythmic_density": 0.1},
     "fast":       {"rhythmic_density": 0.2},
@@ -146,6 +149,33 @@ def _build_alias_map(db: dict[str, Any]) -> dict[str, str]:
         for alias in getattr(profile, "aliases", []) or []:
             alias_map[alias.lower()] = db_key
     return alias_map
+
+
+def _fallback_key_and_scale(query_text: str, mood_words: list[str]) -> list[tuple[str, str]]:
+    """Return multiple deterministic, mood-aware fallback key/scale candidates for a prompt."""
+    lowered = query_text.lower()
+    groups: list[list[tuple[str, str]]] = []
+
+    dark_words = ["dark", "evil", "rage", "drill", "aggressive", "trap", "menacing"]
+    emotional_words = ["emotional", "melodic", "soul", "neo", "dreamy", "ambient", "cinematic", "warm"]
+    bright_words = ["bouncy", "happy", "bright", "major", "uplifting", "playful"]
+    jazzy_words = ["jazz", "complex", "soulful", "modal", "groovy"]
+
+    if any(word in lowered for word in dark_words):
+        groups.append([("C", "minor"), ("D", "minor")])
+    if any(word in lowered for word in emotional_words):
+        groups.append([("A", "minor"), ("E", "minor")])
+    if any(word in lowered for word in bright_words):
+        groups.append([("G", "major"), ("A", "major")])
+    if any(word in lowered for word in jazzy_words):
+        groups.append([("D", "dorian"), ("E", "dorian")])
+    if mood_words:
+        groups.append([("F", "minor"), ("B", "minor")])
+
+    if groups:
+        candidates = [candidate for group in groups for candidate in group]
+        return candidates
+    return [("C", "minor"), ("A", "minor")]
 
 
 def extract_structured_params(query: str) -> dict[str, Any]:
@@ -283,7 +313,14 @@ def extract_structured_params(query: str) -> dict[str, Any]:
             mark(scale_match)
             break   # STOP — first specific match wins
 
-    # ---- 7. Swing template ----
+    # ---- 7. Fallback key/scale if no explicit key was found ----
+    if not re.search(r"\b(?:key|in)\s+(?:of\s+)?[a-g][#b]?\b", text_norm) and not re.search(r"(?<=\s)([a-g][#b]?)(?=\s|$)", text_norm):
+        fallback_candidates = _fallback_key_and_scale(text_norm, mood_words_list)
+        fallback_key, fallback_scale = fallback_candidates[0]
+        result["key"] = fallback_key
+        result["scale"] = fallback_scale
+
+    # ---- 8. Swing template ----
     for kw in sorted(_SWING_VIBES, key=len, reverse=True):
         swing_match = re.search(r"\b" + re.escape(kw) + r"\b", text_norm)
         if swing_match and not is_consumed(swing_match.start(), swing_match.end()):
@@ -291,13 +328,13 @@ def extract_structured_params(query: str) -> dict[str, Any]:
             mark(swing_match)
             break
 
-    # ---- 8. Stem flags ----
+    # ---- 9. Stem flags ----
     if re.search(r"\b(?:counter|fills?|response|countermelody)\b", text_norm):
         result["counter"] = True
     if re.search(r"\b(?:vocal|vocals?|topline|hook|singable)\b", text_norm):
         result["vocal"] = True
 
-    # ---- 9. Residual mood words (for genome ONTOLOGY shifts) ----
+    # ---- 10. Residual mood words (for genome ONTOLOGY shifts) ----
     _STOP = {"a", "an", "the", "in", "at", "of", "for", "me", "make", "like",
              "and", "with", "give", "get", "x", "some", "something", "want",
              "bars", "bar", "bpm", "key"}

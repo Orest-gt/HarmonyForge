@@ -28,6 +28,26 @@ from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.theory.scales import get_scale, get_notes_in_scale
 
 
+def snap_to_16th(beat: float) -> float:
+    """Snap beat positions to the nearest 16th note."""
+    return round(beat * 4.0) / 4.0
+
+
+def detect_resolution_window(current_beat: float, total_beats: float) -> float:
+    """Return a magnetic strength factor near phrase/chord boundaries."""
+    if total_beats <= 0:
+        return 0.0
+
+    beat_in_bar = current_beat % 4.0
+    distance_to_boundary = min(beat_in_bar, 4.0 - beat_in_bar)
+
+    if distance_to_boundary >= 1.0:
+        return 0.0
+
+    # Strength ramps linearly within one beat of a boundary
+    return max(0.0, min(1.0, 1.0 - (distance_to_boundary / 1.0)))
+
+
 class MelodyEvent(BaseModel):
     midi_note: int
     start_beat: float
@@ -39,26 +59,41 @@ class MelodyEvent(BaseModel):
 def compute_harmonic_pull(
     pitch: int,
     chord_tones: List[int],
+    style: StyleSignature,
     current_tension: float,
     distance_weight: float = 1.0
 ) -> float:
     """
-    Computes gravitational pull from chord tones.
-    Closer chord tones = stronger pull. Accumulated tension resists pull.
+    Computes gravitational pull from chord tones with style-aware dissonance handling.
+    Closer chord tones pull harder, while tension and dark/dense contexts make
+    harsh tritone or major-seventh clashes feel less attractive.
     """
     if not chord_tones:
         return 0.0
-    
-    # Find nearest chord tone
+
     nearest_chord = min(chord_tones, key=lambda c: abs(pitch - c))
     distance = abs(pitch - nearest_chord)
-    
-    # Gravitational pull: inverse square law with harmonic weighting
+
     gravitational_force = distance_weight / (1.0 + distance ** 2)
-    
-    # Tension resists gravitational pull
-    net_pull = gravitational_force - (current_tension * 0.5)
-    
+
+    root_pc = chord_tones[0] % 12
+    note_pc = pitch % 12
+    interval_to_root = min((note_pc - root_pc) % 12, (root_pc - note_pc) % 12)
+
+    style_pressure = (
+        0.2
+        + 0.35 * style.darkness_level
+        + 0.2 * style.rhythmic_density
+        + 0.2 * (1.0 - style.dissonance_tolerance)
+    )
+
+    if interval_to_root in {6, 11}:
+        penalty = 0.22 + 0.35 * style_pressure
+        if interval_to_root == 11:
+            penalty += 0.08
+        gravitational_force *= max(0.05, 1.0 - penalty)
+
+    net_pull = gravitational_force - (current_tension * (0.35 + 0.15 * style.rhythmic_density))
     return max(0.0, net_pull)
 
 
@@ -69,66 +104,122 @@ def select_weighted_pitch(
     style: StyleSignature,
     rng: random.Random,
     current_tension: float = 0.0,
+    recent_pitches: List[int] | None = None,
 ) -> int:
     """
-    Selects the next pitch using harmonic gravity field.
-    Pitch selection influenced by gravitational pull from chord tones and accumulated tension.
+    Selects the next pitch with a producer-friendly balance of chord support,
+    stepwise motion, and phrase shape. It leans toward connected motion and
+    avoids stale repetitions or overly harsh clashes in dark, dense contexts.
     """
     if not scale_notes:
         return prev_pitch
 
     weights: List[float] = []
     chord_pcs = [c % 12 for c in current_chord]
+    recent_window = list(recent_pitches or [])[-3:]
 
     for note in scale_notes:
         interval = abs(note - prev_pitch)
-        
-        # Base contour weights (preserves existing behavior)
-        if interval == 0:
-            w = 4.0 * style.repetition_tendency
-        elif 1 <= interval <= 3:
-            w = 8.0
-        elif 4 <= interval <= 5:
-            w = 4.0
-        elif 6 <= interval <= 7:
-            w = 2.5
-        elif interval == 12:
-            w = 3.5 * style.dissonance_tolerance
-        else:
-            w = 0.2 * max(0.1, 1.0 - (interval / 24.0))
+        note_pc = note % 12
+        chord_clash_penalty = 1.0
+        is_chord_tone = note % 12 in chord_pcs
 
-        # Harmonic gravity field modification
-        if note % 12 in chord_pcs:
-            # Chord tones get harmonic pull boost
-            harmonic_pull = compute_harmonic_pull(note, current_chord, current_tension)
-            w *= (2.2 + harmonic_pull)
+        # Strongly discourage semitone clashes against the active chord.
+        for chord_pc in chord_pcs:
+            interval_to_chord = min((note_pc - chord_pc) % 12, (chord_pc - note_pc) % 12)
+            if interval_to_chord == 1:
+                clash_penalty = 0.03 if (style.darkness_level > 0.7 or current_tension > 0.5) else 0.08
+                if style.darkness_level > 0.7 and current_tension > 0.45:
+                    clash_penalty *= 0.5
+                chord_clash_penalty *= clash_penalty
+            elif interval_to_chord == 2:
+                chord_clash_penalty *= 0.45
+            elif interval_to_chord == 3:
+                chord_clash_penalty *= 0.75
+
+        # Base contour weights favor small, connected steps over random leaps.
+        if interval == 0:
+            repetition_penalty = 0.2 if (style.darkness_level > 0.7 and current_tension > 0.5) else 0.55
+            if recent_window and len(recent_window) >= 2 and recent_window[-1] == prev_pitch and recent_window[-2] == prev_pitch:
+                repetition_penalty *= 0.35
+            if is_chord_tone and style.darkness_level > 0.75 and current_tension > 0.6:
+                repetition_penalty *= 0.75
+            w = 2.2 * max(0.2, style.repetition_tendency) * repetition_penalty
+        elif 1 <= interval <= 2:
+            step_weight = 9.2 + 1.4 * style.rhythmic_density + 1.2 * style.repetition_tendency
+            if style.darkness_level > 0.7 and current_tension > 0.5 and is_chord_tone:
+                step_weight *= 1.15
+            w = step_weight
+        elif 3 <= interval <= 4:
+            w = 6.2 + 0.6 * style.rhythmic_density
+        elif 5 <= interval <= 6:
+            w = 3.2 + 0.25 * (1.0 - style.dissonance_tolerance)
+        elif interval == 12:
+            w = 1.0 * max(0.2, 1.0 - style.dissonance_tolerance)
         else:
-            # Non-chord tones get tension penalty
-            w *= max(0.1, 1.0 - current_tension)
+            w = 0.35 * max(0.1, 1.0 - (interval / 24.0))
+
+        if style.darkness_level > 0.75 and style.rhythmic_density > 0.7 and interval >= 3:
+            w *= 0.35
+
+        # Give a mild directional bias so the melody keeps a phrase shape.
+        if recent_window and len(recent_window) >= 2:
+            motion = recent_window[-1] - recent_window[-2]
+            if motion > 0 and note > prev_pitch:
+                w *= 1.15 + 0.1 * style.rhythmic_density
+            elif motion < 0 and note < prev_pitch:
+                w *= 1.15 + 0.1 * style.rhythmic_density
+            elif abs(note - prev_pitch) <= 2:
+                w *= 1.05
+            else:
+                w *= 0.95
+
+        # Harmonic gravity field modification; chord tones are strong anchors,
+        # but nearby passing tones still survive when they support the line.
+        if is_chord_tone:
+            harmonic_pull = compute_harmonic_pull(note, current_chord, style, current_tension)
+            chord_tone_boost = 1.6 + harmonic_pull * 2.0
+            if style.darkness_level > 0.7 and current_tension > 0.5:
+                if interval <= 2:
+                    chord_tone_boost *= 1.35
+                else:
+                    chord_tone_boost *= 0.85
+            w *= chord_tone_boost
+        else:
+            passing_tone_boost = 1.05 if 1 <= interval <= 2 else 1.0
+            tension_penalty = max(0.25, 1.0 - (0.28 * current_tension + 0.12 * style.darkness_level))
+            w *= passing_tone_boost * tension_penalty
+            if style.darkness_level > 0.7 and current_tension > 0.5:
+                w *= 0.30
+
+        # Strongly prefer the actual chord-tone set when the melody is near a chord change.
+        if style.darkness_level > 0.4 and interval <= 2:
+            if is_chord_tone:
+                w *= 1.6
+            else:
+                w *= 0.5
+
+        w *= chord_clash_penalty
+
+        # Reduce big jumps in dark/dense contexts so the phrase stays singable.
+        if interval >= 3:
+            leap_penalty = 0.3 + 0.15 * style.darkness_level + 0.1 * style.rhythmic_density
+            if style.darkness_level > 0.7 and style.rhythmic_density > 0.7:
+                leap_penalty += 0.15
+            w *= max(0.2, 1.0 - leap_penalty)
+
+        # Suppress repeated stagnation and obvious two-note loops.
+        if recent_window:
+            if note == recent_window[-1]:
+                w *= 0.6
+            if len(recent_window) >= 2 and recent_window[-1] == note and recent_window[-2] == note:
+                w *= 0.2
+            if len(recent_window) >= 2 and recent_window[-1] != note and recent_window[-2] == note:
+                w *= 0.85
 
         weights.append(max(0.01, w))
 
     return rng.choices(scale_notes, weights=weights)[0]
-
-
-def snap_to_16th(beat: float) -> float:
-    """Quantizes beat position to nearest 16th-note grid (0.25 steps)."""
-    return round(beat * 4.0) / 4.0
-
-
-def detect_resolution_window(beat_position: float, phrase_length: float = 8.0) -> float:
-    """
-    Calculates magnetic pull strength based on structural position.
-    Strongest near phrase boundaries and weaker toward the middle of the phrase.
-    Returns strength in [0.0, 1.0].
-    """
-    normalized_beat = beat_position % phrase_length
-    resolution_points = [0.0, phrase_length / 2.0, phrase_length]
-    distance_to_resolution = min(abs(normalized_beat - point) for point in resolution_points)
-
-    window_half_width = max(1.0, phrase_length / 8.0)
-    magnetic_strength = 1.0 - (distance_to_resolution / window_half_width)
-    return max(0.0, min(1.0, magnetic_strength))
 
 
 def magnetic_collapse(
@@ -157,8 +248,11 @@ def magnetic_collapse(
 
     nearest_anchor = min(available_anchors, key=lambda n: abs(n - current_pitch))
 
-    # Strong pull resolves decisively to the nearest chord tone.
+    # Strong pull resolves decisively to the nearest chord tone and avoids semitone clashes.
     if magnetic_strength >= 0.7:
+        return nearest_anchor
+
+    if abs(current_pitch - nearest_anchor) <= 2 and current_pitch % 12 not in chord_pcs:
         return nearest_anchor
 
     distances = [abs(n - current_pitch) for n in available_anchors]
@@ -296,45 +390,58 @@ def generate_melody(
         else:
             form = "B"         # Cadential turnaround phrase
 
-        # Calculate root chord tone shift for the block
+        # Calculate root chord and chord-tone context for the block
         block_chord = progression_midi[block_start_bar] if block_start_bar < len(progression_midi) else progression_midi[-1]
         block_chord_pcs = [c % 12 for c in block_chord]
-
-        # Shift the entire motif up/down by scale steps if underlying chord changes significantly
-        head_pitch = motif_pitches[0]
         matching_chord_tones = [n for n in scale_notes if n % 12 in block_chord_pcs]
-        if matching_chord_tones:
-            shifted_head = min(matching_chord_tones, key=lambda n: abs(n - head_pitch))
-            scale_shift = scale_notes.index(shifted_head) - scale_notes.index(head_pitch)
-        else:
-            scale_shift = 0
 
-        # Build phrase pitches for this block
+        # Determine if the block should lean into chord tones or expressive passing motion
+        block_tension = min(1.0, accumulated_tension / 24.0)
+        chord_lock_factor = 0.55 + 0.35 * (1.0 - block_tension)
+
+        # Pivot the motif around the strongest chord tone in the block
+        if matching_chord_tones:
+            pivot_pitch = min(matching_chord_tones, key=lambda n: abs(n - scale_notes[center_idx]))
+        else:
+            pivot_pitch = scale_notes[center_idx]
+        pivot_idx = scale_notes.index(pivot_pitch)
+
         block_pitches: List[int] = []
         for i, base_pitch in enumerate(motif_pitches):
             base_idx = scale_notes.index(base_pitch)
-            shifted_idx = max(0, min(len(scale_notes) - 1, base_idx + scale_shift))
+            pitch_idx = base_idx
 
             if form == "A":
-                # Exact motif
-                pitch = scale_notes[shifted_idx]
+                pitch = scale_notes[pitch_idx]
             elif form == "A_prime":
-                # Keep first 70% of notes IDENTICAL; vary only the cadence tail (last 30%)
-                if i >= int(num_notes * 0.7):
-                    # Tail variation: move to cadence chord tone
-                    pitch = scale_notes[shifted_idx]
-                    if matching_chord_tones:
-                        pitch = min(matching_chord_tones, key=lambda n: abs(n - pitch))
+                if i < int(num_notes * 0.7):
+                    pitch = scale_notes[pitch_idx]
                 else:
-                    pitch = scale_notes[shifted_idx]
-            elif form == "B":
-                # Turnaround B: inverse or descent toward tonic
-                if i >= int(num_notes * 0.5):
-                    # Stepwise descent to resolve
-                    desc_idx = max(0, shifted_idx - (i - int(num_notes * 0.5) + 1))
-                    pitch = scale_notes[desc_idx]
+                    pitch = scale_notes[pitch_idx]
+                    if matching_chord_tones and rng.random() < 0.85:
+                        pitch = min(matching_chord_tones, key=lambda n: abs(pitch - n))
+            else:
+                # B phrase resolves toward the pivot by stepwise motion
+                if i >= int(num_notes * 0.4):
+                    step_down = int((i - int(num_notes * 0.4)) * 0.8)
+                    resolution_idx = max(0, pivot_idx - step_down)
+                    pitch = scale_notes[resolution_idx]
                 else:
-                    pitch = scale_notes[shifted_idx]
+                    pitch = scale_notes[pitch_idx]
+
+            # Gradually favor chord tones when tension is high
+            if matching_chord_tones and pitch % 12 not in block_chord_pcs:
+                if rng.random() < chord_lock_factor:
+                    pitch = min(matching_chord_tones, key=lambda n: abs(pitch - n))
+
+            # Avoid overly wide leaps for better melodic continuity
+            if block_pitches:
+                last_pitch = block_pitches[-1]
+                interval = abs(pitch - last_pitch)
+                if interval > 7:
+                    direction = 1 if pitch > last_pitch else -1
+                    pitch = last_pitch + direction * 7
+                    pitch = max(60, min(84, pitch))
 
             block_pitches.append(pitch)
 
@@ -350,25 +457,50 @@ def generate_melody(
                 pitch = block_pitches[i]
                 
                 # --- HARMONIC GRAVITY FIELD TENSION TRACKING ---
-                # Calculate distance from current chord
                 current_chord_pcs = [c % 12 for c in block_chord]
                 is_chord_tone = (pitch % 12) in current_chord_pcs
-                
+
                 if not is_chord_tone:
                     # Non-chord tones accumulate tension
                     nearest_chord_tone = min(block_chord, key=lambda c: abs(pitch - c))
                     tension_increment = abs(pitch - nearest_chord_tone) * dur
                     accumulated_tension += tension_increment
                 else:
-                    # Chord tones release tension
                     accumulated_tension *= 0.7  # Tension decay on chord tones
-                
+
+                # If the current note is not a chord tone, re-evaluate it with gravity selection
+                prev_pitch = events[-1].midi_note if events else pitch
+                if not is_chord_tone or (
+                        len(events) >= 2
+                        and events[-1].midi_note == events[-2].midi_note
+                        and events[-1].midi_note == pitch
+                ):
+                    pitch = select_weighted_pitch(
+                        prev_pitch,
+                        scale_notes,
+                        block_chord,
+                        style,
+                        rng,
+                        accumulated_tension,
+                        [e.midi_note for e in events[-2:]]
+                    )
+                    current_chord_pcs = [c % 12 for c in block_chord]
+                    is_chord_tone = (pitch % 12) in current_chord_pcs
+
                 # --- MAGNETIC COLLAPSE AT RESOLUTION WINDOWS ---
                 magnetic_strength = detect_resolution_window(current_beat_snapped, 8.0)
                 if magnetic_strength > 0.6 and not is_chord_tone:
-                    # Force collapse to chord tone near phrase boundaries
                     pitch = magnetic_collapse(pitch, block_chord, scale_notes, magnetic_strength, rng)
                     accumulated_tension *= 0.5  # Tension release on collapse
+
+                # --- BOUNDARY CLEAN-UP FOR CHORD CHANGES ---
+                note_end = current_beat_snapped + dur * 0.9
+                next_bar_start = math.ceil(current_beat_snapped / 4.0) * 4.0
+                if note_end > next_bar_start and block_start_bar + 1 < len(progression_midi):
+                    next_chord = progression_midi[block_start_bar + 1]
+                    if pitch % 12 not in [c % 12 for c in next_chord]:
+                        pitch = magnetic_collapse(pitch, next_chord, scale_notes, 0.95, rng)
+                        accumulated_tension *= 0.4
                 
                 # --- ORGANIC PHRASING VELOCITY DYNAMICS (DYNAMIC BREATHING) ---
                 # 1. Base velocity

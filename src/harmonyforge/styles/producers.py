@@ -127,6 +127,86 @@ NICK_MIRA = ProducerProfile(
     )
 )
 
+FORTY = ProducerProfile(
+    name="40",
+    aliases=["Noah Shebib"],
+    signature=StyleSignature(
+        harmonic_complexity=0.60,
+        dissonance_tolerance=0.35,
+        modal_interchange_prob=0.30,
+        secondary_dominant_prob=0.25,
+        rhythmic_density=0.40,
+        syncopation_level=0.35,
+        repetition_tendency=0.75,
+        melodic_range=13,
+        darkness_level=0.45,
+        tension_preference=0.55,
+        preferred_scales=["minor", "dorian", "major"],
+        preferred_chord_types=["min7", "maj7", "sus2", "sus4"],
+        preferred_bpm_range=(90, 125)
+    )
+)
+
+WHEEZY = ProducerProfile(
+    name="Wheezy",
+    aliases=["WheezyBeatz"],
+    signature=StyleSignature(
+        harmonic_complexity=0.40,
+        dissonance_tolerance=0.80,
+        modal_interchange_prob=0.20,
+        secondary_dominant_prob=0.10,
+        rhythmic_density=0.55,
+        syncopation_level=0.80,
+        repetition_tendency=0.85,
+        melodic_range=11,
+        darkness_level=0.90,
+        tension_preference=0.80,
+        preferred_scales=["minor", "harmonic_minor", "phrygian"],
+        preferred_chord_types=["min", "dim", "min7"],
+        preferred_bpm_range=(130, 170)
+    )
+)
+
+BOI_1DA = ProducerProfile(
+    name="Boi-1da",
+    aliases=["Boi1da"],
+    signature=StyleSignature(
+        harmonic_complexity=0.70,
+        dissonance_tolerance=0.60,
+        modal_interchange_prob=0.45,
+        secondary_dominant_prob=0.30,
+        rhythmic_density=0.60,
+        syncopation_level=0.55,
+        repetition_tendency=0.65,
+        melodic_range=15,
+        darkness_level=0.60,
+        tension_preference=0.70,
+        preferred_scales=["minor", "major", "dorian"],
+        preferred_chord_types=["min7", "maj7", "dom7", "sus4"],
+        preferred_bpm_range=(100, 140)
+    )
+)
+
+HIT_BOY = ProducerProfile(
+    name="Hit-Boy",
+    aliases=["Hit Boy"],
+    signature=StyleSignature(
+        harmonic_complexity=0.65,
+        dissonance_tolerance=0.65,
+        modal_interchange_prob=0.35,
+        secondary_dominant_prob=0.20,
+        rhythmic_density=0.50,
+        syncopation_level=0.65,
+        repetition_tendency=0.60,
+        melodic_range=14,
+        darkness_level=0.70,
+        tension_preference=0.75,
+        preferred_scales=["minor", "major", "mixolydian"],
+        preferred_chord_types=["min7", "maj7", "dom7", "sus2"],
+        preferred_bpm_range=(110, 150)
+    )
+)
+
 PRODUCERS_DB: Dict[str, ProducerProfile] = {
     "metro_boomin": METRO_BOOMIN,
     "southside": SOUTHSIDE,
@@ -134,6 +214,10 @@ PRODUCERS_DB: Dict[str, ProducerProfile] = {
     "atl_jacob": ATL_JACOB,
     "tay_keith": TAY_KEITH,
     "nick_mira": NICK_MIRA,
+    "40": FORTY,
+    "wheezy": WHEEZY,
+    "boi-1da": BOI_1DA,
+    "hit-boy": HIT_BOY,
     # Can be extended massively
 }
 
@@ -142,7 +226,15 @@ PRODUCERS = PRODUCERS_DB
 
 def get_producer(name: str) -> ProducerProfile:
     clean_name = name.lower().replace(" ", "_")
-    if clean_name not in PRODUCERS_DB:
-        # Fallback to default
-        return ProducerProfile(name=name, signature=StyleSignature())
-    return PRODUCERS_DB[clean_name]
+    if clean_name in PRODUCERS_DB:
+        return PRODUCERS_DB[clean_name]
+
+    normalized_name = clean_name.strip("_")
+    for profile in PRODUCERS_DB.values():
+        candidate_names = {profile.name.lower().replace(" ", "_")}
+        candidate_names.update(alias.lower().replace(" ", "_") for alias in profile.aliases)
+        if normalized_name in candidate_names:
+            return profile
+
+    # Fallback to default
+    return ProducerProfile(name=name, signature=StyleSignature())

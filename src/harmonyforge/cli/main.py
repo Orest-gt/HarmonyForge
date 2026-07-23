@@ -9,12 +9,13 @@ Commands:
 """
 
 import os
+import sys
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich import box as rich_box
-from typing import Optional
+from typing import Optional, Sequence
 from pathlib import Path
 
 from harmonyforge.styles.genome import StyleSignature
@@ -35,8 +36,74 @@ app = typer.Typer(
         "Full control: hf generate --artist \"Travis Scott\" --producer \"Metro Boomin\" --key F# --scale harmonic_minor"
     ),
     no_args_is_help=True,
+    add_completion=False,
 )
 console = Console()
+
+
+def _parse_root_prompt_args(args: Sequence[str]) -> tuple[str, Optional[int], str, bool, bool, bool, bool]:
+    """Parse a freeform prompt plus a few simple options from the root CLI."""
+    prompt_parts: list[str] = []
+    seed: Optional[int] = None
+    out_dir = "./output"
+    open_folder = True
+    counter = False
+    vocal = False
+    humanize = False
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token in {"--seed", "-s"} and i + 1 < len(args):
+            seed = int(args[i + 1])
+            i += 2
+        elif token in {"--out-dir", "-o"} and i + 1 < len(args):
+            out_dir = args[i + 1]
+            i += 2
+        elif token == "--no-open":
+            open_folder = False
+            i += 1
+        elif token == "--open":
+            open_folder = True
+            i += 1
+        elif token == "--counter":
+            counter = True
+            i += 1
+        elif token == "--vocal":
+            vocal = True
+            i += 1
+        elif token == "--humanize":
+            humanize = True
+            i += 1
+        elif token.startswith("-"):
+            i += 1
+        else:
+            prompt_parts.append(token)
+            i += 1
+    return " ".join(prompt_parts).strip(), seed, out_dir, open_folder, counter, vocal, humanize
+
+
+def main(args: Optional[Sequence[str]] = None) -> None:
+    """Dispatch the CLI: prompt-style root input or Typer subcommands."""
+    argv = list(sys.argv[1:] if args is None else args)
+    if argv and argv[0] == "--version":
+        console.print("harmonyforge 2.1.0")
+        return
+    if argv and argv[0] not in {"make", "generate", "arrange", "info"} and not argv[0].startswith("-"):
+        prompt, seed, out_dir, open_folder, counter, vocal, humanize = _parse_root_prompt_args(argv)
+        if prompt:
+            _run_make_command(
+                query=prompt,
+                seed=seed,
+                out_dir=out_dir,
+                open_folder=open_folder,
+                counter=counter,
+                vocal=vocal,
+                humanize=humanize,
+            )
+            return
+
+    command = typer.main.get_command(app)
+    command.main(args=argv, prog_name="harmonyforge", standalone_mode=False)
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +179,7 @@ def _run_generation(
     swing: str,
     counter: bool,
     vocal: bool,
+    humanize: bool,
     out_path: Path,
     open_folder: bool,
 ) -> None:
@@ -139,6 +207,7 @@ def _run_generation(
             counter_melody=counter_events,
             vocal_topline=vocal_events,
             swing_style=swing,
+            humanize=humanize,
         )
 
         stems = ["stem_chords.mid", "stem_bass.mid", "stem_melody.mid"]
@@ -152,6 +221,8 @@ def _run_generation(
         table.add_row("[green]OK[/green]", "Chords",  "  ".join(prog.chords_roman))
         table.add_row("[green]OK[/green]", "Scale",   f"{key} {scale}")
         table.add_row("[green]OK[/green]", "Swing",   swing)
+        if humanize:
+            table.add_row("[green]OK[/green]", "Humanize", "enabled")
         table.add_row("[green]OK[/green]", "Stems",   "  ".join(stems))
         table.add_row("[green]OK[/green]", "Folder",  str(out_path.resolve()))
         console.print(table)
@@ -171,47 +242,34 @@ def _run_generation(
 # `make` — natural language command (the main UX entry point)
 # ---------------------------------------------------------------------------
 
-@app.command()
-def make(
-    query: str = typer.Argument(
-        ...,
-        help=(
-            "Describe what you want in plain language.\n"
-            "Examples:\n"
-            "  \"dark travis x metro f# 8 bars\"\n"
-            "  \"tay keith x atl jacob d phrygian 163 bpm drill\"\n"
-            "  \"emotional neo-soul mike dean c dorian 16 bars vocal fills\"\n"
-            "  \"southside x metro evil bb minor 140 bpm\""
-        ),
-    ),
-    seed: Optional[int] = typer.Option(None, "--seed", "-s", help="Random seed for reproducible output"),
-    out_dir: str = typer.Option("./output", "--out-dir", "-o", help="Output directory"),
-    open_folder: bool = typer.Option(True, "--open/--no-open", help="Auto-open output folder when done"),
-) -> None:
-    """Generate stems from a natural-language description — no flags needed."""
 
+def _run_make_command(
+    query: str,
+    seed: Optional[int],
+    out_dir: str,
+    open_folder: bool,
+    counter: bool = False,
+    vocal: bool = False,
+    humanize: bool = False,
+) -> None:
     try:
         from harmonyforge.ai.prompt_parser import extract_structured_params
 
         if seed is not None:
             config.set_seed(seed)
 
-        # --- Parse natural language ---
         params = extract_structured_params(query)
 
-        # --- Resolve swing: use detected or auto-select based on style ---
         style, label = _build_style_from_keys(
             params["producers"], params["artists"], params["mood_words"]
         )
         swing = params["swing"] or _default_swing(style.darkness_level, style.rhythmic_density)
 
-        # --- Build output folder name from the query (slug) ---
         import re
         slug = re.sub(r"[^\w\s]", "", query.lower())
         slug = re.sub(r"\s+", "_", slug.strip())[:40]
         out_path = Path(out_dir) / slug
 
-        # --- What I understood panel ---
         producers_display = "  +  ".join(
             get_producer(k).name for k in params["producers"]
         ) if params["producers"] else "[dim]none detected[/dim]"
@@ -220,20 +278,23 @@ def make(
         ) if params["artists"] else "[dim]none[/dim]"
 
         understood = Table(show_header=False, box=rich_box.SIMPLE, padding=(0, 1))
-        understood.add_row("[dim]query[/dim]",     f"[italic]{query}[/italic]")
+        understood.add_row("[dim]query[/dim]", f"[italic]{query}[/italic]")
         understood.add_row("[cyan]producers[/cyan]", producers_display)
         if params["artists"]:
-            understood.add_row("[cyan]artists[/cyan]",   artists_display)
+            understood.add_row("[cyan]artists[/cyan]", artists_display)
         understood.add_row("[cyan]key / scale[/cyan]", f"{params['key']} {params['scale']}")
-        understood.add_row("[cyan]BPM[/cyan]",       str(params["bpm"]) if params["bpm"] else "[dim]auto from style[/dim]")
-        understood.add_row("[cyan]bars[/cyan]",      str(params["bars"]))
-        understood.add_row("[cyan]swing[/cyan]",     swing)
+        understood.add_row("[cyan]BPM[/cyan]", str(params["bpm"]) if params["bpm"] else "[dim]auto from style[/dim]")
+        understood.add_row("[cyan]bars[/cyan]", str(params["bars"]))
+        understood.add_row("[cyan]swing[/cyan]", swing)
         if params["mood_words"]:
-            understood.add_row("[cyan]mood[/cyan]",  "  ".join(params["mood_words"]))
+            understood.add_row("[cyan]mood[/cyan]", "  ".join(params["mood_words"]))
+        counter_requested = counter or params["counter"]
+        vocal_requested = vocal or params["vocal"]
+
         extras = []
-        if params["counter"]:
+        if counter_requested:
             extras.append("counter-melody")
-        if params["vocal"]:
+        if vocal_requested:
             extras.append("vocal topline")
         if extras:
             understood.add_row("[cyan]extras[/cyan]", "  ".join(extras))
@@ -257,8 +318,9 @@ def make(
             bars=params["bars"],
             bpm_override=params["bpm"],
             swing=swing,
-            counter=params["counter"],
-            vocal=params["vocal"],
+            counter=counter_requested,
+            vocal=vocal_requested,
+            humanize=humanize,
             out_path=out_path,
             open_folder=open_folder,
         )
@@ -268,6 +330,30 @@ def make(
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(code=1)
+
+
+@app.command()
+def make(
+    query: str = typer.Argument(
+        ...,
+        help=(
+            "Describe what you want in plain language.\n"
+            "Examples:\n"
+            "  \"dark travis x metro f# 8 bars\"\n"
+            "  \"tay keith x atl jacob d phrygian 163 bpm drill\"\n"
+            "  \"emotional neo-soul mike dean c dorian 16 bars vocal fills\"\n"
+            "  \"southside x metro evil bb minor 140 bpm\""
+        ),
+    ),
+    seed: Optional[int] = typer.Option(None, "--seed", "-s", help="Random seed for reproducible output"),
+    out_dir: str = typer.Option("./output", "--out-dir", "-o", help="Output directory"),
+    open_folder: bool = typer.Option(True, "--open/--no-open", help="Auto-open output folder when done"),
+    counter: bool = typer.Option(False, "--counter", help="Add counter-melody stem"),
+    vocal: bool = typer.Option(False, "--vocal", help="Add singable vocal topline stem"),
+    humanize: bool = typer.Option(False, "--humanize", help="Apply swing/humanization to exported stems"),
+) -> None:
+    """Generate stems from a natural-language description — no flags needed."""
+    _run_make_command(query=query, seed=seed, out_dir=out_dir, open_folder=open_folder, counter=counter, vocal=vocal, humanize=humanize)
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +372,7 @@ def generate(
     counter:  bool         = typer.Option(False,           "--counter",         help="Add counter-melody stem"),
     vocal:    bool         = typer.Option(False,           "--vocal",           help="Add singable vocal topline stem"),
     swing:    str          = typer.Option("straight",      "--swing",           help="Swing template (straight | trap_bounce | dilla_swing | drill_push | afro_triplet)"),
+    humanize: bool         = typer.Option(False,           "--humanize",        help="Apply swing/humanization to exported stems"),
     seed:     Optional[int]= typer.Option(None,            "--seed",            help="Random seed for deterministic output"),
     out_dir:  str          = typer.Option("./output",      "--out-dir",  "-o",  help="Output directory"),
     open_folder: bool      = typer.Option(True,            "--open/--no-open",  help="Auto-open output folder when done"),
@@ -308,7 +395,7 @@ def generate(
     out_path = Path(out_dir)
     _run_generation(
         style=style, key=key, scale=scale, bars=bars, bpm_override=bpm,
-        swing=swing, counter=counter, vocal=vocal,
+        swing=swing, counter=counter, vocal=vocal, humanize=humanize,
         out_path=out_path, open_folder=open_folder,
     )
 

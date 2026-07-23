@@ -12,6 +12,10 @@ import random
 from typing import Dict
 import pretty_midi
 
+
+def _stable_random(seed: int) -> random.Random:
+    return random.Random(seed)
+
 # Swing percentages relative to 16th-note grid duration.
 # swing_pct: offset for off-beat 16th notes (steps 1, 3)
 # lag_pct:   global pull/push BEHIND or AHEAD of beat (NOT applied to beat 1 / step 0)
@@ -47,6 +51,11 @@ def humanize_instrument(
     beat_dur = 60.0 / bpm
     grid_16th_dur = beat_dur / 4.0
 
+    # Use a deterministic seed derived from the instrument's note positions so the
+    # same input yields the same humanization while still feeling organic.
+    seed = int(abs((bpm * 1000) + (len(inst.notes) * 17) + int(round(sum(note.start for note in inst.notes) * 1000))))
+    rng = _stable_random(seed)
+
     for note in inst.notes:
         # 16th-note position within the current beat (0, 1, 2, 3)
         start_beat_f = note.start / beat_dur
@@ -63,16 +72,20 @@ def humanize_instrument(
             lag_offset = grid_16th_dur * template["lag_pct"] * swing_strength
 
         # 3. Micro-jitter (always scaled by swing_strength so pads are tighter)
-        jitter = random.uniform(
+        jitter = rng.uniform(
             -template["jitter_sec"] * swing_strength,
              template["jitter_sec"] * swing_strength,
         )
 
         total_offset = swing_offset + lag_offset + jitter
 
-        note.start = max(0.0, note.start + total_offset)
-        note.end   = max(note.start + 0.05, note.end + total_offset + random.uniform(-0.005, 0.005))
+        # Snap to a shared 16th-note grid so melodic and harmonic stems stay cohesive.
+        snapped_start = round((note.start + total_offset) / grid_16th_dur) * grid_16th_dur
+        snapped_end = round((note.end + total_offset) / grid_16th_dur) * grid_16th_dur
+
+        note.start = max(0.0, snapped_start)
+        note.end   = max(note.start + 0.05, snapped_end + rng.uniform(-0.005, 0.005))
 
         # Velocity humanization
-        vel_shift = random.randint(-velocity_variance, velocity_variance)
+        vel_shift = rng.randint(-velocity_variance, velocity_variance)
         note.velocity = max(1, min(127, note.velocity + vel_shift))

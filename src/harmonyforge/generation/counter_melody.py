@@ -68,7 +68,8 @@ def generate_counter_melody(
     all_scale_notes = get_notes_in_scale(root_midi, scale, octaves=4)
 
     # --- Register Spacing ---
-    if register == "lower":
+    use_lower_register = (register == "lower") or (style.darkness_level > 0.7) or (style.rhythmic_density > 0.75)
+    if use_lower_register:
         # Lower counter (e.g. cello-range / low synth fill) — C3 to B3
         counter_scale_notes = [n for n in all_scale_notes if 48 <= n <= 59]
     else:
@@ -76,7 +77,7 @@ def generate_counter_melody(
         counter_scale_notes = [n for n in all_scale_notes if 72 <= n <= 91]
 
     if not counter_scale_notes:
-        counter_scale_notes = [root_midi + (12 if register == "upper" else -12)]
+        counter_scale_notes = [root_midi + (12 if not use_lower_register else -12)]
 
     # --- Build occupied lead beats as INTEGER 16th-step keys (no float comparison) ---
     occupied_16th_steps: set[int] = set()
@@ -96,55 +97,66 @@ def generate_counter_melody(
         for step in range(dur_16ths):
             lead_dir_at_step[start_16th + step] = directions[i]
 
-    # --- Grid walk ---
-    total_bars  = len(progression_midi)
+    # --- Phrase-based grid walk ---
+    total_bars = len(progression_midi)
     total_16ths = total_bars * 16
-    grid_step_16ths = 2 if style.rhythmic_density < 0.6 else 1  # 8th or 16th grid
-
+    phrase_len = 6 if style.rhythmic_density < 0.6 else 4
     prev_counter_pitch = counter_scale_notes[len(counter_scale_notes) // 2]
     step_16th = 0
+    bar_note_count = 0
+    phrase_direction = 1
 
     while step_16th < total_16ths:
-        beat_f       = step_16th / 4.0
-        bar_idx      = int(beat_f // 4.0)
-        chord_i      = progression_midi[bar_idx] if bar_idx < len(progression_midi) else progression_midi[-1]
+        beat_f = step_16th / 4.0
+        bar_idx = int(beat_f // 4.0)
+        chord_i = progression_midi[bar_idx] if bar_idx < len(progression_midi) else progression_midi[-1]
         lead_is_silent = step_16th not in occupied_16th_steps
 
-        if lead_is_silent and rng.random() < 0.65:
-            # --- Contrary motion: bias toward opposite of lead direction ---
-            lead_dir = lead_dir_at_step.get(step_16th, 0)  # +1 / -1 / 0
+        if lead_is_silent and rng.random() < 0.75:
+            lead_dir = lead_dir_at_step.get(step_16th, 0)
 
             if lead_dir != 0 and counter_scale_notes:
-                # Build a filtered candidate list biased in the contrary direction
-                mid_idx   = counter_scale_notes.index(
-                    min(counter_scale_notes, key=lambda n: abs(n - prev_counter_pitch))
-                )
+                mid_idx = counter_scale_notes.index(min(counter_scale_notes, key=lambda n: abs(n - prev_counter_pitch)))
                 if lead_dir == 1:
-                    # Lead went up -> counter biases DOWN (use lower half of register)
-                    contrary_pool = counter_scale_notes[:max(1, mid_idx + 1)]
+                    contrary_pool = counter_scale_notes[: max(1, mid_idx + 1)]
                 else:
-                    # Lead went down -> counter biases UP (use upper half of register)
                     contrary_pool = counter_scale_notes[min(len(counter_scale_notes) - 1, mid_idx):]
                 if not contrary_pool:
                     contrary_pool = counter_scale_notes
             else:
                 contrary_pool = counter_scale_notes
 
-            dur_16ths_note = rng.choice([1, 2, 4])  # 16th, 8th, quarter
+            # Phrase-like rhythms: longer notes, fewer events, and clear contour.
+            if bar_note_count % phrase_len == 0:
+                dur_16ths_note = 4
+                phrase_direction *= -1
+            else:
+                dur_16ths_note = 2 if rng.random() < 0.8 else 4
+
             dur_beats = dur_16ths_note / 4.0
+            base_pitch = select_weighted_pitch(prev_counter_pitch, contrary_pool, chord_i, style, rng)
 
-            counter_pitch = select_weighted_pitch(prev_counter_pitch, contrary_pool, chord_i, style, rng)
-            vel           = rng.randint(65, 95)  # Slightly quieter than lead
+            # Create an actual melodic contour: move up/down in steps rather than repeating one pitch.
+            if events:
+                if phrase_direction > 0 and base_pitch <= prev_counter_pitch:
+                    base_pitch = prev_counter_pitch + 2
+                elif phrase_direction < 0 and base_pitch >= prev_counter_pitch:
+                    base_pitch = prev_counter_pitch - 2
 
+            if base_pitch not in counter_scale_notes:
+                base_pitch = min(counter_scale_notes, key=lambda n: abs(n - base_pitch))
+
+            vel = rng.randint(74, 95)
             events.append(MelodyEvent(
-                midi_note=counter_pitch,
+                midi_note=base_pitch,
                 start_beat=beat_f,
-                duration_beats=dur_beats * 0.9,
+                duration_beats=dur_beats * 0.95,
                 velocity=vel
             ))
-            prev_counter_pitch = counter_pitch
+            prev_counter_pitch = base_pitch
             step_16th += dur_16ths_note
+            bar_note_count += 1
         else:
-            step_16th += grid_step_16ths
+            step_16th += 1
 
     return events

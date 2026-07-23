@@ -32,7 +32,8 @@ dev = [
 ]
 
 [project.scripts]
-harmonyforge = "harmonyforge.cli.main:app"
+harmonyforge = "harmonyforge.cli.main:main"
+hf = "harmonyforge.cli.main:main"
 
 [build-system]
 requires = ["hatchling"]

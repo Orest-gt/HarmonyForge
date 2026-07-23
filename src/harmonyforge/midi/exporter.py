@@ -15,6 +15,10 @@ import pretty_midi
 
 from harmonyforge.midi.humanizer import humanize_instrument
 
+
+def _to_seconds(beat: float, bpm: int) -> float:
+    return beat * (60.0 / bpm)
+
 if TYPE_CHECKING:
     from harmonyforge.generation.progression_generator import ProgressionResult
     from harmonyforge.generation.melody_generator import MelodyEvent
@@ -30,6 +34,7 @@ def export_loop(
     counter_melody: Optional["List[MelodyEvent]"] = None,
     vocal_topline: Optional["List[MelodyEvent]"] = None,
     swing_style: str = "straight",
+    humanize: bool = False,
 ) -> None:
     """
     Exports clean MIDI stems for a single loop:
@@ -42,6 +47,7 @@ def export_loop(
     out_dir.mkdir(exist_ok=True, parents=True)
     beat_dur = 60.0 / bpm
     bar_dur  = beat_dur * 4.0
+    grid_16th_dur = beat_dur / 4.0
 
     # --- Chords ---
     pm_chords  = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
@@ -55,8 +61,8 @@ def export_loop(
 
     if hasattr(progression, "chord_events") and progression.chord_events:
         for ce in progression.chord_events:
-            st = ce.start_beat * beat_dur
-            et = st + (ce.duration_beats * beat_dur)
+            st = _to_seconds(ce.start_beat, bpm)
+            et = st + (_to_seconds(ce.duration_beats, bpm))
             for pitch in ce.midi_notes:
                 inst_chord.notes.append(pretty_midi.Note(
                     velocity=ce.velocity, pitch=pitch, start=st, end=et
@@ -72,7 +78,8 @@ def export_loop(
 
     # Chord pads get minimal swing (0.2) — they anchor the harmonic grid.
     # Full swing only goes on melodic stems to avoid "late chord stab" artifacts.
-    humanize_instrument(inst_chord, style_name=swing_style, bpm=bpm, swing_strength=0.2)
+    if humanize:
+        humanize_instrument(inst_chord, style_name=swing_style, bpm=bpm, swing_strength=0.2)
     pm_chords.instruments.append(inst_chord)
     pm_chords.write(str(out_dir / "stem_chords.mid"))
 
@@ -85,8 +92,8 @@ def export_loop(
         pretty_midi.TimeSignature(numerator=4, denominator=4, time=0.0)
     )
     for b in bass:
-        st = b.start_beat * beat_dur
-        et = st + (b.duration_beats * beat_dur)
+        st = _to_seconds(b.start_beat, bpm)
+        et = st + (_to_seconds(b.duration_beats, bpm))
         inst_bass.notes.append(pretty_midi.Note(
             velocity=b.velocity, pitch=b.midi_note, start=st, end=et,
         ))
@@ -109,12 +116,13 @@ def export_loop(
         pretty_midi.TimeSignature(numerator=4, denominator=4, time=0.0)
     )
     for m in melody:
-        st = m.start_beat * beat_dur
-        et = st + (m.duration_beats * beat_dur)
+        st = _to_seconds(m.start_beat, bpm)
+        et = st + (_to_seconds(m.duration_beats, bpm))
         inst_mel.notes.append(pretty_midi.Note(
             velocity=m.velocity, pitch=m.midi_note, start=st, end=et,
         ))
-    humanize_instrument(inst_mel, style_name=swing_style, bpm=bpm)
+    if humanize:
+        humanize_instrument(inst_mel, style_name=swing_style, bpm=bpm)
     pm_mel.instruments.append(inst_mel)
     pm_mel.write(str(out_dir / "stem_melody.mid"))
 
@@ -128,12 +136,13 @@ def export_loop(
             pretty_midi.TimeSignature(numerator=4, denominator=4, time=0.0)
         )
         for cm in counter_melody:
-            st = cm.start_beat * beat_dur
-            et = st + (cm.duration_beats * beat_dur)
+            st = _to_seconds(cm.start_beat, bpm)
+            et = st + (_to_seconds(cm.duration_beats, bpm))
             inst_counter.notes.append(pretty_midi.Note(
                 velocity=cm.velocity, pitch=cm.midi_note, start=st, end=et,
             ))
-        humanize_instrument(inst_counter, style_name=swing_style, bpm=bpm)
+        if humanize:
+            humanize_instrument(inst_counter, style_name=swing_style, bpm=bpm)
         pm_counter.instruments.append(inst_counter)
         pm_counter.write(str(out_dir / "stem_counter_melody.mid"))
 
@@ -147,17 +156,18 @@ def export_loop(
             pretty_midi.TimeSignature(numerator=4, denominator=4, time=0.0)
         )
         for v in vocal_topline:
-            st = v.start_beat * beat_dur
-            et = st + (v.duration_beats * beat_dur)
+            st = _to_seconds(v.start_beat, bpm)
+            et = st + (_to_seconds(v.duration_beats, bpm))
             inst_vocal.notes.append(pretty_midi.Note(
                 velocity=v.velocity, pitch=v.midi_note, start=st, end=et,
             ))
-        humanize_instrument(inst_vocal, style_name=swing_style, bpm=bpm)
+        if humanize:
+            humanize_instrument(inst_vocal, style_name=swing_style, bpm=bpm)
         pm_vocal.instruments.append(inst_vocal)
         pm_vocal.write(str(out_dir / "stem_vocal_topline.mid"))
 
 
-def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
+def export_arrangement(arrangement: "Any", out_dir: Path, humanize: bool = False) -> None:
     """
     Experimental full-song export used by `harmonyforge arrange`.
     Produces: full_arrangement.mid, stem_*.mid, arrangement.json
@@ -249,8 +259,9 @@ def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
                     velocity=m.velocity, pitch=m.midi_note, start=st, end=et,
                 ))
 
-    humanize_instrument(inst_chord)
-    humanize_instrument(inst_mel)
+    if humanize:
+        humanize_instrument(inst_chord)
+        humanize_instrument(inst_mel)
 
     pm_chords.instruments.append(inst_chord)
     pm_bass.instruments.append(inst_bass)

@@ -63,49 +63,54 @@ class ProgressionGenerator:
         is_rnb        = (self.style.harmonic_complexity > 0.6 and self.style.darkness_level < 0.6)
         is_ambient    = (self.style.rhythmic_density < 0.4)
 
+        def _weighted_choice(options: list[tuple[int, float]]) -> int:
+            choices = [degree for degree, weight in options]
+            weights = [weight for degree, weight in options]
+            return rng.choices(choices, weights=weights, k=1)[0]
+
         if is_trap_dark:
-            # Travis / Metro: i - VII - VI - VII loop, occasionally drops to iv or v
+            # Travis / Metro: i - VII - VI - VII loop, with purposeful iv/v dips and repeated anchor turns
             CHORD_GRAPH = {
-                0: [6, 5, 6],          # i  → VII (2x) or VI
-                6: [5, 0, 5],          # VII → VI (2x) or i
-                5: [6, 4, 6],          # VI  → VII (2x) or v
-                4: [0, 5],             # v   → i or VI
-                3: [0, 4],             # iv  → i or v
-                1: [4, 0],             # ii° → v or i
-                2: [0, 5],
+                0: [(6, 2.0), (5, 1.0), (3, 0.6)],
+                6: [(5, 2.2), (0, 1.0), (4, 0.5)],
+                5: [(6, 1.6), (0, 1.2), (4, 0.8)],
+                4: [(0, 1.8), (5, 1.0)],
+                3: [(0, 1.2), (4, 0.9)],
+                1: [(4, 1.0), (0, 0.7)],
+                2: [(5, 1.0), (0, 0.5)],
             }
         elif is_rnb:
-            # Neo-soul / R&B: ii-V-I, iii-vi-IV-V turns
+            # Neo-soul / R&B: ii-V-I, iii-vi-IV-V turns, with richer IV/VI cadences
             CHORD_GRAPH = {
-                0: [3, 5, 2],
-                1: [4, 5],
-                2: [5, 1],
-                3: [1, 4, 0],
-                4: [0, 5],
-                5: [1, 3, 4],
-                6: [0, 4],
+                0: [(3, 1.5), (5, 1.0), (2, 0.8)],
+                1: [(4, 1.6), (5, 1.0), (0, 0.6)],
+                2: [(5, 1.3), (1, 0.9), (3, 0.6)],
+                3: [(1, 1.4), (4, 1.2), (0, 0.8)],
+                4: [(0, 1.8), (5, 1.0), (3, 0.7)],
+                5: [(1, 1.4), (3, 1.0), (4, 0.9)],
+                6: [(0, 1.5), (4, 0.9), (3, 0.6)],
             }
         elif is_ambient:
             # Ambient: slow, stays near vi and IV, avoids V
             CHORD_GRAPH = {
-                0: [5, 3],
-                3: [5, 0],
-                5: [3, 0],
-                4: [0, 5],
-                1: [0, 3],
-                2: [5, 0],
-                6: [0, 5],
+                0: [(5, 1.8), (3, 1.4), (6, 0.9)],
+                3: [(5, 1.7), (0, 1.2)],
+                5: [(3, 1.6), (0, 1.0)],
+                4: [(0, 1.4), (5, 0.8)],
+                1: [(0, 1.2), (3, 0.8)],
+                2: [(5, 1.2), (0, 0.9)],
+                6: [(0, 1.5), (5, 0.8)],
             }
         else:
             # Generic diatonic pop/default
             CHORD_GRAPH = {
-                0: [3, 4, 5],
-                1: [4, 5],
-                2: [5, 1],
-                3: [1, 4, 0],
-                4: [0, 5],
-                5: [1, 3, 4],
-                6: [0, 4],
+                0: [(3, 1.2), (4, 1.0), (5, 0.8)],
+                1: [(4, 1.3), (5, 1.0)],
+                2: [(5, 1.3), (1, 1.0)],
+                3: [(1, 1.2), (4, 1.0), (0, 0.8)],
+                4: [(0, 1.5), (5, 1.0)],
+                5: [(1, 1.2), (3, 1.0), (4, 0.9)],
+                6: [(0, 1.4), (4, 0.8)],
             }
 
         progression_raw: List[List[int]] = []
@@ -168,25 +173,23 @@ class ProgressionGenerator:
             if rng.random() < self.style.repetition_tendency and i > 0 and i % 2 != 0:
                 pass  # Hold current chord (repetition — very trap)
             else:
-                choices = CHORD_GRAPH.get(current_chord_idx, [0, 3, 5])
-                choices = [c for c in choices if c < len(diatonic_pool)]
-                if not choices:
-                    choices = [0]
-                
+                candidates = CHORD_GRAPH.get(current_chord_idx, [(0, 1.0), (3, 0.8), (5, 0.6)])
+                candidates = [(c, w) for c, w in candidates if c < len(diatonic_pool)]
+                if not candidates:
+                    candidates = [(0, 1.0)]
+
                 # Turnaround Cadence Surprise (Bar 4 or Bar 8)
                 is_turnaround_bar = (i == 3 or i == 7)
                 if is_turnaround_bar and rng.random() < self.style.secondary_dominant_prob:
-                    # Inject Secondary Dominant V7 choice (e.g. V degree = 4)
                     current_chord_idx = 4
                     if len(roman) > i:
                         roman[i] = "V7/V"
                 elif is_turnaround_bar and rng.random() < self.style.modal_interchange_prob:
-                    # Modal Interchange: Borrowed IV or Picardy Tonic (degree 3 or 0)
                     current_chord_idx = 3 if scale_name != "major" else 5
                     if len(roman) > i:
                         roman[i] = "IV (borrowed)"
                 else:
-                    current_chord_idx = rng.choice(choices)
+                    current_chord_idx = _weighted_choice(candidates)
 
         bpm = rng.randint(self.style.preferred_bpm_range[0], self.style.preferred_bpm_range[1])
 
