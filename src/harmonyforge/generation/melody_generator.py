@@ -119,15 +119,15 @@ def snap_to_16th(beat: float) -> float:
 def detect_resolution_window(beat_position: float, phrase_length: float = 8.0) -> float:
     """
     Calculates magnetic pull strength based on structural position.
-    Near phrase boundaries = stronger magnetic pull toward chord tones.
+    Strongest near phrase boundaries and weaker toward the middle of the phrase.
     Returns strength in [0.0, 1.0].
     """
-    distance_to_boundary = min(
-        beat_position % phrase_length, 
-        phrase_length - (beat_position % phrase_length)
-    )
-    # Normalize: 0.0 at boundaries, 1.0 at center of phrase
-    magnetic_strength = 1.0 - (distance_to_boundary / (phrase_length / 2.0))
+    normalized_beat = beat_position % phrase_length
+    resolution_points = [0.0, phrase_length / 2.0, phrase_length]
+    distance_to_resolution = min(abs(normalized_beat - point) for point in resolution_points)
+
+    window_half_width = max(1.0, phrase_length / 8.0)
+    magnetic_strength = 1.0 - (distance_to_resolution / window_half_width)
     return max(0.0, min(1.0, magnetic_strength))
 
 
@@ -139,26 +139,34 @@ def magnetic_collapse(
     rng: random.Random,
 ) -> int:
     """
-    Force trajectory collapse to most contextually required anchor pitch.
-    Stronger magnetic strength = higher probability of chord tone selection.
+    Force trajectory collapse to the most contextually required anchor pitch.
+    Stronger magnetic strength makes the melody resolve more decisively to the
+    nearest chord tone, creating a convincing boundary cadence.
     """
     if magnetic_strength < 0.3:
         return current_pitch  # Not in resolution window
-    
+
     chord_pcs = [c % 12 for c in target_chord]
     available_anchors = [n for n in scale_notes if n % 12 in chord_pcs]
-    
+
     if not available_anchors:
         return current_pitch
-    
-    # Weight by distance to current pitch (prefer nearest anchor)
+
+    if current_pitch % 12 in chord_pcs:
+        return current_pitch
+
+    nearest_anchor = min(available_anchors, key=lambda n: abs(n - current_pitch))
+
+    # Strong pull resolves decisively to the nearest chord tone.
+    if magnetic_strength >= 0.7:
+        return nearest_anchor
+
     distances = [abs(n - current_pitch) for n in available_anchors]
     weights = [1.0 / (1.0 + d) for d in distances]
-    
-    # Apply magnetic strength to bias toward anchors
+
     if rng.random() < magnetic_strength:
         return rng.choices(available_anchors, weights=weights)[0]
-    
+
     return current_pitch
 
 
