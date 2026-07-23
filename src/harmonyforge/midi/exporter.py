@@ -34,7 +34,7 @@ def export_loop(
 ) -> None:
     """
     Exports three clean MIDI stems for a single loop:
-      stem_chords.mid  — chord pads, one note-per-bar per pitch
+      stem_chords.mid  — open-spread Drop-2 pro voicings with rhythmic re-striking & duration control
       stem_bass.mid    — 808 pattern with standard MIDI pitch bends
       stem_melody.mid  — lead melody with humanization
 
@@ -47,14 +47,24 @@ def export_loop(
     # --- Chords ---
     pm_chords  = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     inst_chord = pretty_midi.Instrument(program=0, name="Chords")
-    t = 0.0
-    for chord in progression.chords_midi:
-        for pitch in chord:
-            inst_chord.notes.append(pretty_midi.Note(
-                velocity=90, pitch=pitch,
-                start=t, end=t + bar_dur,
-            ))
-        t += bar_dur
+
+    if hasattr(progression, "chord_events") and progression.chord_events:
+        for ce in progression.chord_events:
+            st = ce.start_beat * beat_dur
+            et = st + (ce.duration_beats * beat_dur)
+            for pitch in ce.midi_notes:
+                inst_chord.notes.append(pretty_midi.Note(
+                    velocity=ce.velocity, pitch=pitch, start=st, end=et
+                ))
+    else:
+        t = 0.0
+        for chord in progression.chords_midi:
+            for pitch in chord:
+                inst_chord.notes.append(pretty_midi.Note(
+                    velocity=90, pitch=pitch, start=t, end=t + bar_dur
+                ))
+            t += bar_dur
+
     humanize_instrument(inst_chord)
     pm_chords.instruments.append(inst_chord)
     pm_chords.write(str(out_dir / "stem_chords.mid"))
@@ -63,8 +73,8 @@ def export_loop(
     pm_bass  = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     inst_bass = pretty_midi.Instrument(program=38, name="808 Bass")
     for b in bass:
-        st = b.start_beat    * beat_dur
-        et = st + b.duration_beats * beat_dur
+        st = b.start_beat * beat_dur
+        et = st + (b.duration_beats * beat_dur)
         inst_bass.notes.append(pretty_midi.Note(
             velocity=b.velocity, pitch=b.midi_note, start=st, end=et,
         ))
@@ -82,8 +92,8 @@ def export_loop(
     pm_mel   = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     inst_mel = pretty_midi.Instrument(program=81, name="Lead Melody")
     for m in melody:
-        st = m.start_beat    * beat_dur
-        et = st + m.duration_beats * beat_dur
+        st = m.start_beat * beat_dur
+        et = st + (m.duration_beats * beat_dur)
         inst_mel.notes.append(pretty_midi.Note(
             velocity=m.velocity, pitch=m.midi_note, start=st, end=et,
         ))
@@ -101,8 +111,6 @@ def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
     Experimental full-song export used by `harmonyforge arrange`.
     Produces: full_arrangement.mid, stem_*.mid, arrangement.json
     """
-    from harmonyforge.generation.arrangement_generator import Arrangement  # noqa: F401
-
     out_dir.mkdir(exist_ok=True, parents=True)
     bpm      = arrangement.bpm
     beat_dur = 60.0 / bpm
@@ -137,21 +145,34 @@ def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
         })
 
         if "chords" in section.active_instruments:
-            loops = max(1, section.bars // 8)
-            for li in range(loops):
-                t = start_sec + li * 8 * bar_dur
-                for chord in section.progression.chords_midi:
-                    for pitch in chord:
-                        inst_chord.notes.append(pretty_midi.Note(
-                            velocity=int(100 * section.energy),
-                            pitch=pitch, start=t, end=t + bar_dur - 0.05,
-                        ))
-                    t += bar_dur
+            if hasattr(section.progression, "chord_events") and section.progression.chord_events:
+                loops = max(1, section.bars // 8)
+                for li in range(loops):
+                    loop_offset = start_sec + (li * 8 * bar_dur)
+                    for ce in section.progression.chord_events:
+                        st = loop_offset + (ce.start_beat * beat_dur)
+                        et = st + (ce.duration_beats * beat_dur)
+                        for pitch in ce.midi_notes:
+                            inst_chord.notes.append(pretty_midi.Note(
+                                velocity=int(ce.velocity * section.energy),
+                                pitch=pitch, start=st, end=et,
+                            ))
+            else:
+                loops = max(1, section.bars // 8)
+                for li in range(loops):
+                    t = start_sec + li * 8 * bar_dur
+                    for chord in section.progression.chords_midi:
+                        for pitch in chord:
+                            inst_chord.notes.append(pretty_midi.Note(
+                                velocity=int(100 * section.energy),
+                                pitch=pitch, start=t, end=t + bar_dur,
+                            ))
+                        t += bar_dur
 
         if "bass" in section.active_instruments:
             for b in section.bass:
-                st = start_sec + b.start_beat    * beat_dur
-                et = st + b.duration_beats * beat_dur
+                st = start_sec + (b.start_beat * beat_dur)
+                et = st + (b.duration_beats * beat_dur)
                 inst_bass.notes.append(pretty_midi.Note(
                     velocity=b.velocity, pitch=b.midi_note, start=st, end=et,
                 ))
@@ -165,8 +186,8 @@ def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
 
         if "melody" in section.active_instruments:
             for m in section.melody:
-                st = start_sec + m.start_beat    * beat_dur
-                et = st + m.duration_beats * beat_dur
+                st = start_sec + (m.start_beat * beat_dur)
+                et = st + (m.duration_beats * beat_dur)
                 inst_mel.notes.append(pretty_midi.Note(
                     velocity=m.velocity, pitch=m.midi_note, start=st, end=et,
                 ))
