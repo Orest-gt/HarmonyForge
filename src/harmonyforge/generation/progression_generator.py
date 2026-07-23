@@ -163,7 +163,7 @@ class ProgressionGenerator:
                     velocity=90
                 ))
 
-            # --- Next chord selection ---
+            # --- Next chord selection & Producer Cadence Surprises ---
             # With repetition_tendency: hold the chord on odd bars
             if rng.random() < self.style.repetition_tendency and i > 0 and i % 2 != 0:
                 pass  # Hold current chord (repetition — very trap)
@@ -172,7 +172,21 @@ class ProgressionGenerator:
                 choices = [c for c in choices if c < len(diatonic_pool)]
                 if not choices:
                     choices = [0]
-                current_chord_idx = rng.choice(choices)
+                
+                # Turnaround Cadence Surprise (Bar 4 or Bar 8)
+                is_turnaround_bar = (i == 3 or i == 7)
+                if is_turnaround_bar and rng.random() < self.style.secondary_dominant_prob:
+                    # Inject Secondary Dominant V7 choice (e.g. V degree = 4)
+                    current_chord_idx = 4
+                    if len(roman) > i:
+                        roman[i] = "V7/V"
+                elif is_turnaround_bar and rng.random() < self.style.modal_interchange_prob:
+                    # Modal Interchange: Borrowed IV or Picardy Tonic (degree 3 or 0)
+                    current_chord_idx = 3 if scale_name != "major" else 5
+                    if len(roman) > i:
+                        roman[i] = "IV (borrowed)"
+                else:
+                    current_chord_idx = rng.choice(choices)
 
         bpm = rng.randint(self.style.preferred_bpm_range[0], self.style.preferred_bpm_range[1])
 

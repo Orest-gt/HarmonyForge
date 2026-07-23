@@ -30,6 +30,46 @@ class MelodyEvent(BaseModel):
     velocity: int
 
 
+def select_weighted_pitch(
+    prev_pitch: int,
+    scale_notes: List[int],
+    current_chord: List[int],
+    style: StyleSignature,
+    rng: random.Random
+) -> int:
+    """
+    Selects the next pitch using weighted contour motion.
+    High weight for stepwise motion (1-3 semitones) and chord tones.
+    """
+    if not scale_notes:
+        return prev_pitch
+
+    weights: List[float] = []
+    chord_pcs = [c % 12 for c in current_chord]
+
+    for note in scale_notes:
+        interval = abs(note - prev_pitch)
+        if interval == 0:
+            w = 4.0 * style.repetition_tendency
+        elif 1 <= interval <= 3:
+            w = 8.0
+        elif 4 <= interval <= 5:
+            w = 4.0
+        elif 6 <= interval <= 7:
+            w = 2.5
+        elif interval == 12:
+            w = 3.5 * style.dissonance_tolerance
+        else:
+            w = 0.2 * max(0.1, 1.0 - (interval / 24.0))
+
+        if note % 12 in chord_pcs:
+            w *= 2.2
+
+        weights.append(max(0.01, w))
+
+    return rng.choices(scale_notes, weights=weights)[0]
+
+
 def snap_to_16th(beat: float) -> float:
     """Quantizes beat position to nearest 16th-note grid (0.25 steps)."""
     return round(beat * 4.0) / 4.0
@@ -210,15 +250,37 @@ def generate_melody(
 
             if active_mask[i]:
                 pitch = block_pitches[i]
-                # Dynamic velocity contour: accent beat 1 and phrase peak
-                is_phrase_start = (i == 0)
-                base_vel = 102 if is_phrase_start else rng.randint(80, 98)
+                
+                # --- ORGANIC PHRASING VELOCITY DYNAMICS (DYNAMIC BREATHING) ---
+                # 1. Base velocity
+                base_vel = 92
+                
+                # 2. Downbeat Accent (Beat 0.0 & Beat 2.0)
+                is_downbeat = (current_beat_snapped % 2.0 == 0.0)
+                if is_downbeat:
+                    base_vel += rng.randint(8, 14)
+                
+                # 3. Off-beat 16th Ghost-note feel (steps 1 and 3)
+                sixteenth_step = int(round(current_beat_snapped * 4.0)) % 4
+                if sixteenth_step in [1, 3]:
+                    base_vel -= rng.randint(10, 18)
+                
+                # 4. Melodic Peak Crescendo Boost
+                if pitch == max(block_pitches):
+                    base_vel += rng.randint(10, 16)
+                
+                # 5. Cadence Tail Decrescendo (last 2 notes of phrase)
+                if i >= num_notes - 2:
+                    base_vel -= rng.randint(8, 14)
+
+                # Clamp velocity to valid MIDI range [40, 127]
+                final_vel = max(40, min(127, base_vel + rng.randint(-4, 4)))
 
                 events.append(MelodyEvent(
                     midi_note=pitch,
                     start_beat=current_beat_snapped,
                     duration_beats=dur * 0.9,
-                    velocity=base_vel
+                    velocity=final_vel
                 ))
 
             current_beat = snap_to_16th(current_beat + dur)
