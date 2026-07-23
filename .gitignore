@@ -14,4 +14,8 @@ dist/
 .pytest_cache/
 output/
 benchmark_out/
-*.mid
+# Only ignore MIDI files in output directories, not in production folders
+output/*.mid
+benchmark_out/*.mid
+demo_output/*.mid
+test_output/*.mid
