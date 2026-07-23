@@ -1,5 +1,5 @@
 """
-HarmonyForge CLI v1.0.
+HarmonyForge CLI v1.1.
 
 Core command: `harmonyforge generate`
 Experimental command: `harmonyforge arrange` (gated, requires arrangement engine)
@@ -20,9 +20,11 @@ from harmonyforge.ai.prompt_parser import parse_prompt_to_signature
 from harmonyforge.generation.progression_generator import ProgressionGenerator
 from harmonyforge.generation.melody_generator import generate_melody
 from harmonyforge.generation.bass_generator import generate_808_pattern
+from harmonyforge.generation.counter_melody import generate_counter_melody
+from harmonyforge.generation.vocal_topline import generate_vocal_topline
 
 app = typer.Typer(
-    help="HarmonyForge v1.0 — AI-assisted MIDI composition for professional producers.",
+    help="HarmonyForge v1.1 — AI-assisted MIDI composition for professional producers.",
     no_args_is_help=True,
 )
 console = Console()
@@ -63,13 +65,16 @@ def generate(
     bars: int = typer.Option(8,   "--bars", "-b", help="Loop length in bars (default 8)"),
     bpm: Optional[int] = typer.Option(None, "--bpm",         help="Override BPM (defaults to style)"),
     prompt: str = typer.Option("",   "--prompt",      help="Mood words  e.g. 'dark ambient sparse'"),
+    counter: bool = typer.Option(False, "--counter",   help="Generate a complementary counter-melody stem"),
+    vocal: bool = typer.Option(False, "--vocal",       help="Generate a singable vocal topline stem"),
+    swing: str = typer.Option("straight", "--swing",   help="Swing template (straight | trap_bounce | dilla_swing | drill_push | afro_triplet)"),
     seed: Optional[int] = typer.Option(None, "--seed",        help="Random seed for deterministic output"),
     out_dir: str = typer.Option("./output", "--out-dir", "-o", help="Output directory"),
 ) -> None:
     """Generate a set of MIDI stem loops ready for your DAW."""
 
     console.print(Panel.fit(
-        f"[bold blue]HarmonyForge v1.0[/bold blue]\n"
+        f"[bold blue]HarmonyForge v1.1[/bold blue]\n"
         f"[white]{artist}[/white] x [white]{producer}[/white]  "
         f"[dim]|[/dim]  [yellow]{key} {scale}[/yellow]  "
         f"[dim]|[/dim]  {bars} bars",
@@ -83,10 +88,6 @@ def generate(
     # Build style genome
     style = _build_style(artist, producer, prompt)
 
-    # Override BPM if requested
-    if bpm is not None:
-        style = style.model_copy(update={})  # pydantic v2 copy
-
     # Generate core loop
     gen = ProgressionGenerator(style)
     prog = gen.generate(key, scale, bars)
@@ -96,17 +97,30 @@ def generate(
     melody = generate_melody(prog.chords_midi, scale, key, style, prog.bpm)
     bass   = generate_808_pattern(prog.chords_midi, style, prog.bpm)
 
+    counter_melody = generate_counter_melody(melody, prog.chords_midi, scale, key, style, prog.bpm) if counter else None
+    vocal_topline = generate_vocal_topline(prog.chords_midi, scale, key, style, prog.bpm) if vocal else None
+
     # Export stems
     out_path = Path(out_dir)
     out_path.mkdir(exist_ok=True, parents=True)
 
     from harmonyforge.midi.exporter import export_loop
-    export_loop(prog, melody, bass, out_path, prog.bpm)
+    export_loop(
+        progression=prog,
+        melody=melody,
+        bass=bass,
+        out_dir=out_path,
+        bpm=prog.bpm,
+        counter_melody=counter_melody,
+        vocal_topline=vocal_topline,
+        swing_style=swing
+    )
 
     # Summary table
     table = Table(show_header=False, box=None, padding=(0, 1))
     table.add_row("[green]OK[/green]", "BPM",    str(prog.bpm))
     table.add_row("[green]OK[/green]", "Chords", " - ".join(prog.chords_roman))
+    table.add_row("[green]OK[/green]", "Swing",  swing)
     table.add_row("[green]OK[/green]", "Stems",  str(out_path.absolute()))
 
     console.print(table)
@@ -155,7 +169,7 @@ def info() -> None:
     from harmonyforge.styles.artists import ARTISTS
     from harmonyforge.styles.producers import PRODUCERS
 
-    console.print("[bold blue]HarmonyForge v1.0[/bold blue]\n")
+    console.print("[bold blue]HarmonyForge v1.1[/bold blue]\n")
     console.print("[bold]Artists:[/bold]  " + "  ·  ".join(ARTISTS.keys()))
     console.print("[bold]Producers:[/bold] " + "  ·  ".join(PRODUCERS.keys()))
 

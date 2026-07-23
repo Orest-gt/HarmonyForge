@@ -1,7 +1,7 @@
 """
-MIDI Exporter v1.0.
+MIDI Exporter v1.1.
 
-export_loop  — core v1.0 path: exports 3 stem files for a single loop.
+export_loop  — core path: exports stem files for a single loop (chords, bass, melody, counter-melody, vocal).
 export_arrangement — experimental path: full song timeline + JSON metadata.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, Any, List
+from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
 import pretty_midi
 
@@ -21,24 +21,23 @@ if TYPE_CHECKING:
     from harmonyforge.generation.bass_generator import BassEvent
 
 
-# ---------------------------------------------------------------------------
-# v1.0 core: single-loop export
-# ---------------------------------------------------------------------------
-
 def export_loop(
     progression: "ProgressionResult",
     melody: "List[MelodyEvent]",
     bass: "List[BassEvent]",
     out_dir: Path,
     bpm: int,
+    counter_melody: Optional["List[MelodyEvent]"] = None,
+    vocal_topline: Optional["List[MelodyEvent]"] = None,
+    swing_style: str = "straight",
 ) -> None:
     """
-    Exports three clean MIDI stems for a single loop:
-      stem_chords.mid  — open-spread Drop-2 pro voicings with rhythmic re-striking & duration control
-      stem_bass.mid    — 808 pattern with standard MIDI pitch bends
-      stem_melody.mid  — lead melody with humanization
-
-    All files land in out_dir and are immediately drag-ready for any DAW.
+    Exports clean MIDI stems for a single loop:
+      stem_chords.mid         — open-spread Drop-2 pro voicings with rhythmic re-striking
+      stem_bass.mid           — 808 pattern with standard MIDI pitch bends
+      stem_melody.mid         — lead melody with genre swing templates
+      stem_counter_melody.mid — optional counter-melody stem
+      stem_vocal_topline.mid  — optional singable vocal topline stem
     """
     out_dir.mkdir(exist_ok=True, parents=True)
     beat_dur = 60.0 / bpm
@@ -65,7 +64,7 @@ def export_loop(
                 ))
             t += bar_dur
 
-    humanize_instrument(inst_chord)
+    humanize_instrument(inst_chord, style_name=swing_style, bpm=bpm)
     pm_chords.instruments.append(inst_chord)
     pm_chords.write(str(out_dir / "stem_chords.mid"))
 
@@ -88,7 +87,7 @@ def export_loop(
     pm_bass.instruments.append(inst_bass)
     pm_bass.write(str(out_dir / "stem_bass.mid"))
 
-    # --- Melody ---
+    # --- Lead Melody ---
     pm_mel   = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     inst_mel = pretty_midi.Instrument(program=81, name="Lead Melody")
     for m in melody:
@@ -97,14 +96,38 @@ def export_loop(
         inst_mel.notes.append(pretty_midi.Note(
             velocity=m.velocity, pitch=m.midi_note, start=st, end=et,
         ))
-    humanize_instrument(inst_mel)
+    humanize_instrument(inst_mel, style_name=swing_style, bpm=bpm)
     pm_mel.instruments.append(inst_mel)
     pm_mel.write(str(out_dir / "stem_melody.mid"))
 
+    # --- Counter-Melody (Optional) ---
+    if counter_melody:
+        pm_counter = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
+        inst_counter = pretty_midi.Instrument(program=82, name="Counter Melody")
+        for cm in counter_melody:
+            st = cm.start_beat * beat_dur
+            et = st + (cm.duration_beats * beat_dur)
+            inst_counter.notes.append(pretty_midi.Note(
+                velocity=cm.velocity, pitch=cm.midi_note, start=st, end=et,
+            ))
+        humanize_instrument(inst_counter, style_name=swing_style, bpm=bpm)
+        pm_counter.instruments.append(inst_counter)
+        pm_counter.write(str(out_dir / "stem_counter_melody.mid"))
 
-# ---------------------------------------------------------------------------
-# Experimental: full-song arrangement export
-# ---------------------------------------------------------------------------
+    # --- Vocal Topline (Optional) ---
+    if vocal_topline:
+        pm_vocal = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
+        inst_vocal = pretty_midi.Instrument(program=53, name="Vocal Topline")
+        for v in vocal_topline:
+            st = v.start_beat * beat_dur
+            et = st + (v.duration_beats * beat_dur)
+            inst_vocal.notes.append(pretty_midi.Note(
+                velocity=v.velocity, pitch=v.midi_note, start=st, end=et,
+            ))
+        humanize_instrument(inst_vocal, style_name=swing_style, bpm=bpm)
+        pm_vocal.instruments.append(inst_vocal)
+        pm_vocal.write(str(out_dir / "stem_vocal_topline.mid"))
+
 
 def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
     """
