@@ -41,7 +41,6 @@ def generate_808_pattern(
 
     events: List[BassEvent] = []
     prev_bass_pitch: Optional[int] = None
-    total_bars = len(progression_midi)
 
     for i, chord in enumerate(progression_midi):
         # Transpose chord tones to bass register (C1 to C3 — MIDI 24-48)

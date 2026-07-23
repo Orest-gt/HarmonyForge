@@ -35,7 +35,7 @@ def select_weighted_pitch(
     scale_notes: List[int],
     current_chord: List[int],
     style: StyleSignature,
-    rng: random.Random
+    rng: random.Random,
 ) -> int:
     """
     Selects the next pitch using weighted contour motion.

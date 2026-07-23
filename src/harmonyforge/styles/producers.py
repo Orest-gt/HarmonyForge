@@ -106,12 +106,34 @@ TAY_KEITH = ProducerProfile(
     )
 )
 
+NICK_MIRA = ProducerProfile(
+    name="Nick Mira",
+    aliases=["Nick Mira", "Internet Money"],
+    signature=StyleSignature(
+        # Dark, melodic trap — Juice WRLD, Lil Tecca, emotional piano leads
+        harmonic_complexity=0.65,      # Rich, emotional harmonies
+        dissonance_tolerance=0.60,     # Emotional tension but not too harsh
+        modal_interchange_prob=0.40,   # Frequent borrowed chords for emotion
+        secondary_dominant_prob=0.20,
+        rhythmic_density=0.50,         # Melodic focus, not overly busy
+        syncopation_level=0.55,        # Groovy but not aggressive
+        repetition_tendency=0.70,      # Catchy, repetitive motifs
+        melodic_range=16,              # Strong melodic range for emotional leads
+        darkness_level=0.85,           # Dark, moody atmosphere
+        tension_preference=0.75,       # Emotional tension without being overwhelming
+        preferred_scales=["harmonic_minor", "minor", "phrygian"],  # Dark, emotional scales
+        preferred_chord_types=["min7", "maj7", "min", "dim7"],  # Emotional chord qualities
+        preferred_bpm_range=(135, 155)  # Classic trap tempo range
+    )
+)
+
 PRODUCERS_DB: Dict[str, ProducerProfile] = {
     "metro_boomin": METRO_BOOMIN,
     "southside": SOUTHSIDE,
     "mike_dean": MIKE_DEAN,
     "atl_jacob": ATL_JACOB,
     "tay_keith": TAY_KEITH,
+    "nick_mira": NICK_MIRA,
     # Can be extended massively
 }
 

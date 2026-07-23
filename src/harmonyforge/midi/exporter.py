@@ -46,6 +46,11 @@ def export_loop(
     # --- Chords ---
     pm_chords  = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     inst_chord = pretty_midi.Instrument(program=0, name="Chords")
+    
+    # Add TimeSignature (4/4) at tick 0 for DAW compatibility
+    pm_chords.time_signature_changes.append(
+        pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+    )
 
     if hasattr(progression, "chord_events") and progression.chord_events:
         for ce in progression.chord_events:
@@ -73,6 +78,11 @@ def export_loop(
     # --- Bass ---
     pm_bass  = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     inst_bass = pretty_midi.Instrument(program=38, name="808 Bass")
+    
+    # Add TimeSignature (4/4) at tick 0 for DAW compatibility
+    pm_bass.time_signature_changes.append(
+        pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+    )
     for b in bass:
         st = b.start_beat * beat_dur
         et = st + (b.duration_beats * beat_dur)
@@ -92,6 +102,11 @@ def export_loop(
     # --- Lead Melody ---
     pm_mel   = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     inst_mel = pretty_midi.Instrument(program=81, name="Lead Melody")
+    
+    # Add TimeSignature (4/4) at tick 0 for DAW compatibility
+    pm_mel.time_signature_changes.append(
+        pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+    )
     for m in melody:
         st = m.start_beat * beat_dur
         et = st + (m.duration_beats * beat_dur)
@@ -106,6 +121,11 @@ def export_loop(
     if counter_melody:
         pm_counter = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
         inst_counter = pretty_midi.Instrument(program=82, name="Counter Melody")
+        
+        # Add TimeSignature (4/4) at tick 0 for DAW compatibility
+        pm_counter.time_signature_changes.append(
+            pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+        )
         for cm in counter_melody:
             st = cm.start_beat * beat_dur
             et = st + (cm.duration_beats * beat_dur)
@@ -120,6 +140,11 @@ def export_loop(
     if vocal_topline:
         pm_vocal = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
         inst_vocal = pretty_midi.Instrument(program=53, name="Vocal Topline")
+        
+        # Add TimeSignature (4/4) at tick 0 for DAW compatibility
+        pm_vocal.time_signature_changes.append(
+            pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+        )
         for v in vocal_topline:
             st = v.start_beat * beat_dur
             et = st + (v.duration_beats * beat_dur)
@@ -149,6 +174,17 @@ def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
 
     pm_full = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
     pm_full.instruments.extend([inst_chord, inst_bass, inst_mel])
+    
+    # Add TimeSignature (4/4) at tick 0 for DAW compatibility
+    for midi_obj in [pm_full, pm_chords, pm_bass, pm_mel]:
+        midi_obj.time_signature_changes.append(
+            pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+        )
+    
+    # Add TimeSignature (4/4) at tick 0 for DAW compatibility
+    pm_full.time_signature_changes.append(
+        pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+    )
 
     meta_json: Dict[str, Any] = {
         "bpm": bpm,
@@ -223,6 +259,12 @@ def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
     pm_chords.instruments.append(inst_chord)
     pm_bass.instruments.append(inst_bass)
     pm_melody.instruments.append(inst_mel)
+    
+    # Add TimeSignature (4/4) and TempoChange at tick 0 for DAW compatibility
+    for midi_obj in [pm_full, pm_chords, pm_bass, pm_mel]:
+        midi_obj.time_signature_changes.append(
+            pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+        )
 
     pm_full.write(str(out_dir / "full_arrangement.mid"))
     pm_chords.write(str(out_dir / "stem_chords.mid"))

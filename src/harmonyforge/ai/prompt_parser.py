@@ -11,7 +11,7 @@ Prompt parser — two modes:
 """
 
 import re
-from typing import Dict, Optional
+from typing import Dict, Any, Match
 from harmonyforge.styles.genome import StyleSignature
 
 
@@ -138,7 +138,7 @@ def _default_swing(darkness: float, density: float) -> str:
     return "trap_bounce"
 
 
-def _build_alias_map(db: dict) -> dict:
+def _build_alias_map(db: dict[str, Any]) -> dict[str, str]:
     """Build { lowercased_name_or_alias: db_key } from any profile DB."""
     alias_map = {}
     for db_key, profile in db.items():
@@ -148,7 +148,7 @@ def _build_alias_map(db: dict) -> dict:
     return alias_map
 
 
-def extract_structured_params(query: str) -> dict:
+def extract_structured_params(query: str) -> dict[str, Any]:
     """
     Parses a free-form natural language string into structured generation params.
 
@@ -174,7 +174,7 @@ def extract_structured_params(query: str) -> dict:
     text = raw.lower()
     text_norm = re.sub(r"[,.\-!?;:]", " ", text)
 
-    result = {
+    result: dict[str, Any] = {
         "producers":  [],
         "artists":    [],
         "key":        "C",
@@ -186,10 +186,15 @@ def extract_structured_params(query: str) -> dict:
         "vocal":      False,
         "mood_words": [],
     }
+    
+    # Type assertions for mypy
+    producers_list: list[str] = result["producers"]  # type: ignore
+    artists_list: list[str] = result["artists"]      # type: ignore
+    mood_words_list: list[str] = result["mood_words"]  # type: ignore
 
-    consumed_spans: list = []   # list of (start, end) char spans consumed
+    consumed_spans: list[tuple[int, int]] = []   # list of (start, end) char spans consumed
 
-    def mark(m: re.Match) -> None:
+    def mark(m: Match[str]) -> None:
         consumed_spans.append((m.start(), m.end()))
 
     def is_consumed(start: int, end: int) -> bool:
@@ -202,8 +207,8 @@ def extract_structured_params(query: str) -> dict:
         for m in re.finditer(pattern, text_norm):
             if not is_consumed(m.start(), m.end()):
                 db_key = producer_aliases[alias]
-                if db_key not in result["producers"]:
-                    result["producers"].append(db_key)
+                if db_key not in producers_list:
+                    producers_list.append(db_key)
                 mark(m)
 
     # ---- 2. Artist detection ----
@@ -213,23 +218,23 @@ def extract_structured_params(query: str) -> dict:
         for m in re.finditer(pattern, text_norm):
             if not is_consumed(m.start(), m.end()):
                 db_key = artist_aliases[alias]
-                if db_key not in result["artists"]:
-                    result["artists"].append(db_key)
+                if db_key not in artists_list:
+                    artists_list.append(db_key)
                 mark(m)
 
     # ---- 3. BPM detection: "145 bpm" or "at 145" ----
     for pattern in [r"\b(\d{2,3})\s*bpm\b", r"\bat\s+(\d{2,3})\b"]:
-        m = re.search(pattern, text_norm)
-        if m:
-            result["bpm"] = int(m.group(1))
-            mark(m)
+        m_match = re.search(pattern, text_norm)
+        if m_match:
+            result["bpm"] = int(m_match.group(1))
+            mark(m_match)
             break
 
     # ---- 4. Bars detection: "8 bars" ----
-    m = re.search(r"\b(\d+)\s*bars?\b", text_norm)
-    if m:
-        result["bars"] = max(2, min(64, int(m.group(1))))
-        mark(m)
+    bars_match = re.search(r"\b(\d+)\s*bars?\b", text_norm)
+    if bars_match:
+        result["bars"] = max(2, min(64, int(bars_match.group(1))))
+        mark(bars_match)
 
     # ---- 5. Key detection ----
     # Note: # and b are NOT \w chars, so \b after them fails.
@@ -238,18 +243,18 @@ def extract_structured_params(query: str) -> dict:
     _NOTE_PAT      = r"([a-g][#b]?)"
     # Pattern A: note + scale word (e.g. "f# minor", "c dorian")
     # IMPORTANT: only mark the note span, NOT the scale keyword — scale detection handles that separately.
-    m = re.search(_NOTE_PAT + r"(?=\s+" + _KEY_NAMES_PAT + r")", text_norm)
-    if m:
-        note = m.group(1)
+    key_match = re.search(_NOTE_PAT + r"(?=\s+" + _KEY_NAMES_PAT + r")", text_norm)
+    if key_match:
+        note = key_match.group(1)
         result["key"] = note[0].upper() + note[1:]
-        mark(m)   # Only the note token is marked
+        mark(key_match)   # Only the note token is marked
     else:
         # Pattern B: "key f#" or "in f#"
-        m = re.search(r"\bkey\s+(?:of\s+)?" + _NOTE_PAT + r"(?=\s|$)", text_norm)
-        if m:
-            note = m.group(1)
+        key_match = re.search(r"\bkey\s+(?:of\s+)?" + _NOTE_PAT + r"(?=\s|$)", text_norm)
+        if key_match:
+            note = key_match.group(1)
             result["key"] = note[0].upper() + note[1:]
-            mark(m)
+            mark(key_match)
         else:
             # Pattern C: isolated note token (e.g. "travis x metro f# 8 bars")
             for m2 in re.finditer(r"(?<=\s)(" + _NOTE_PAT[1:-1] + r")(?=\s|$)", text_norm):
@@ -272,18 +277,18 @@ def extract_structured_params(query: str) -> dict:
         "minor", "sad",
     ]
     for kw in _SCALE_PRIORITY:
-        m = re.search(r"(?<![a-z])" + re.escape(kw) + r"(?![a-z])", text_norm)
-        if m and not is_consumed(m.start(), m.end()):
+        scale_match = re.search(r"(?<![a-z])" + re.escape(kw) + r"(?![a-z])", text_norm)
+        if scale_match and not is_consumed(scale_match.start(), scale_match.end()):
             result["scale"] = _SCALE_VIBES[kw]
-            mark(m)
+            mark(scale_match)
             break   # STOP — first specific match wins
 
     # ---- 7. Swing template ----
     for kw in sorted(_SWING_VIBES, key=len, reverse=True):
-        m = re.search(r"\b" + re.escape(kw) + r"\b", text_norm)
-        if m and not is_consumed(m.start(), m.end()):
+        swing_match = re.search(r"\b" + re.escape(kw) + r"\b", text_norm)
+        if swing_match and not is_consumed(swing_match.start(), swing_match.end()):
             result["swing"] = _SWING_VIBES[kw]
-            mark(m)
+            mark(swing_match)
             break
 
     # ---- 8. Stem flags ----
@@ -305,6 +310,6 @@ def extract_structured_params(query: str) -> dict:
                 and len(w) > 2
                 and w not in _STOP
                 and w in ONTOLOGY):
-            result["mood_words"].append(w)
+            mood_words_list.append(w)
 
     return result

@@ -1,5 +1,5 @@
 """
-HarmonyForge CLI v1.1.
+HarmonyForge CLI v2.1.0.
 
 Commands:
   make     — natural language: `hf make "dark travis x metro f# 8 bars"`
@@ -19,8 +19,8 @@ from pathlib import Path
 
 from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.core.config import config
-from harmonyforge.styles.artists import get_artist, ARTISTS_DB
-from harmonyforge.styles.producers import get_producer, PRODUCERS_DB
+from harmonyforge.styles.artists import get_artist
+from harmonyforge.styles.producers import get_producer
 from harmonyforge.ai.prompt_parser import parse_prompt_to_signature, _default_swing
 from harmonyforge.generation.progression_generator import ProgressionGenerator
 from harmonyforge.generation.melody_generator import generate_melody
@@ -30,7 +30,7 @@ from harmonyforge.generation.vocal_topline import generate_vocal_topline
 
 app = typer.Typer(
     help=(
-        "HarmonyForge v1.1 — AI-assisted MIDI composition for professional producers.\n\n"
+        "HarmonyForge v2.1.0 — AI-assisted MIDI composition for professional producers.\n\n"
         "Quickstart:  hf make \"dark travis x metro f# 8 bars\"\n"
         "Full control: hf generate --artist \"Travis Scott\" --producer \"Metro Boomin\" --key F# --scale harmonic_minor"
     ),
@@ -44,10 +44,10 @@ console = Console()
 # ---------------------------------------------------------------------------
 
 def _build_style_from_keys(
-    producer_keys: list,
-    artist_keys: list,
-    mood_words: list,
-) -> StyleSignature:
+    producer_keys: list[str],
+    artist_keys: list[str],
+    mood_words: list[str],
+) -> tuple[StyleSignature, str]:
     """
     Build a blended StyleSignature from resolved DB keys.
     - If two producers: blend them 50/50, then treat as producer side.
@@ -118,47 +118,53 @@ def _run_generation(
     """Shared generation + export pipeline used by both `make` and `generate`."""
     from harmonyforge.midi.exporter import export_loop
 
-    gen  = ProgressionGenerator(style)
-    prog = gen.generate(key, scale, bars)
-    if bpm_override:
-        prog = prog.model_copy(update={"bpm": bpm_override})
+    try:
+        gen  = ProgressionGenerator(style)
+        prog = gen.generate(key, scale, bars)
+        if bpm_override:
+            prog = prog.model_copy(update={"bpm": bpm_override})
 
-    melody = generate_melody(prog.chords_midi, scale, key, style, prog.bpm)
-    bass   = generate_808_pattern(prog.chords_midi, style, prog.bpm)
-    counter_events = generate_counter_melody(melody, prog.chords_midi, scale, key, style, prog.bpm) if counter else None
-    vocal_events   = generate_vocal_topline(prog.chords_midi, scale, key, style, prog.bpm) if vocal else None
+        melody = generate_melody(prog.chords_midi, scale, key, style, prog.bpm)
+        bass   = generate_808_pattern(prog.chords_midi, style, prog.bpm)
+        counter_events = generate_counter_melody(melody, prog.chords_midi, scale, key, style, prog.bpm) if counter else None
+        vocal_events   = generate_vocal_topline(prog.chords_midi, scale, key, style, prog.bpm) if vocal else None
 
-    out_path.mkdir(exist_ok=True, parents=True)
-    export_loop(
-        progression=prog,
-        melody=melody,
-        bass=bass,
-        out_dir=out_path,
-        bpm=prog.bpm,
-        counter_melody=counter_events,
-        vocal_topline=vocal_events,
-        swing_style=swing,
-    )
+        out_path.mkdir(exist_ok=True, parents=True)
+        export_loop(
+            progression=prog,
+            melody=melody,
+            bass=bass,
+            out_dir=out_path,
+            bpm=prog.bpm,
+            counter_melody=counter_events,
+            vocal_topline=vocal_events,
+            swing_style=swing,
+        )
 
-    stems = ["stem_chords.mid", "stem_bass.mid", "stem_melody.mid"]
-    if counter_events: stems.append("stem_counter_melody.mid")
-    if vocal_events:   stems.append("stem_vocal_topline.mid")
+        stems = ["stem_chords.mid", "stem_bass.mid", "stem_melody.mid"]
+        if counter_events:
+            stems.append("stem_counter_melody.mid")
+        if vocal_events:
+            stems.append("stem_vocal_topline.mid")
 
-    table = Table(show_header=False, box=None, padding=(0, 1))
-    table.add_row("[green]OK[/green]", "BPM",     str(prog.bpm))
-    table.add_row("[green]OK[/green]", "Chords",  "  ".join(prog.chords_roman))
-    table.add_row("[green]OK[/green]", "Scale",   f"{key} {scale}")
-    table.add_row("[green]OK[/green]", "Swing",   swing)
-    table.add_row("[green]OK[/green]", "Stems",   "  ".join(stems))
-    table.add_row("[green]OK[/green]", "Folder",  str(out_path.resolve()))
-    console.print(table)
-    console.print("\n[bold green]Done.[/bold green] Import the stems into your DAW.\n")
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_row("[green]OK[/green]", "BPM",     str(prog.bpm))
+        table.add_row("[green]OK[/green]", "Chords",  "  ".join(prog.chords_roman))
+        table.add_row("[green]OK[/green]", "Scale",   f"{key} {scale}")
+        table.add_row("[green]OK[/green]", "Swing",   swing)
+        table.add_row("[green]OK[/green]", "Stems",   "  ".join(stems))
+        table.add_row("[green]OK[/green]", "Folder",  str(out_path.resolve()))
+        console.print(table)
+        console.print("\n[bold green]Done.[/bold green] Import the stems into your DAW.\n")
 
-    if open_folder:
-        try:
-            os.startfile(str(out_path.resolve()))   # Windows: opens Explorer
-        except Exception:
-            pass  # Non-Windows or permission error — silently skip
+        if open_folder:
+            try:
+                os.startfile(str(out_path.resolve()))   # Windows: opens Explorer
+            except Exception:
+                pass  # Non-Windows or permission error — silently skip
+    except Exception as e:
+        console.print(f"[bold red]Error during generation:[/bold red] {e}")
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -184,72 +190,84 @@ def make(
 ) -> None:
     """Generate stems from a natural-language description — no flags needed."""
 
-    from harmonyforge.ai.prompt_parser import extract_structured_params
+    try:
+        from harmonyforge.ai.prompt_parser import extract_structured_params
 
-    if seed is not None:
-        config.set_seed(seed)
+        if seed is not None:
+            config.set_seed(seed)
 
-    # --- Parse natural language ---
-    params = extract_structured_params(query)
+        # --- Parse natural language ---
+        params = extract_structured_params(query)
 
-    # --- Resolve swing: use detected or auto-select based on style ---
-    style, label = _build_style_from_keys(
-        params["producers"], params["artists"], params["mood_words"]
-    )
-    swing = params["swing"] or _default_swing(style.darkness_level, style.rhythmic_density)
-
-    # --- Build output folder name from the query (slug) ---
-    import re
-    slug = re.sub(r"[^\w\s]", "", query.lower())
-    slug = re.sub(r"\s+", "_", slug.strip())[:40]
-    out_path = Path(out_dir) / slug
-
-    # --- What I understood panel ---
-    producers_display = "  +  ".join(
-        get_producer(k).name for k in params["producers"]
-    ) if params["producers"] else "[dim]none detected[/dim]"
-    artists_display = "  +  ".join(
-        get_artist(k).name for k in params["artists"]
-    ) if params["artists"] else "[dim]none[/dim]"
-
-    understood = Table(show_header=False, box=rich_box.SIMPLE, padding=(0, 1))
-    understood.add_row("[dim]query[/dim]",     f"[italic]{query}[/italic]")
-    understood.add_row("[cyan]producers[/cyan]", producers_display)
-    if params["artists"]:
-        understood.add_row("[cyan]artists[/cyan]",   artists_display)
-    understood.add_row("[cyan]key / scale[/cyan]", f"{params['key']} {params['scale']}")
-    understood.add_row("[cyan]BPM[/cyan]",       str(params["bpm"]) if params["bpm"] else "[dim]auto from style[/dim]")
-    understood.add_row("[cyan]bars[/cyan]",      str(params["bars"]))
-    understood.add_row("[cyan]swing[/cyan]",     swing)
-    if params["mood_words"]:
-        understood.add_row("[cyan]mood[/cyan]",  "  ".join(params["mood_words"]))
-    extras = []
-    if params["counter"]: extras.append("counter-melody")
-    if params["vocal"]:   extras.append("vocal topline")
-    if extras:
-        understood.add_row("[cyan]extras[/cyan]", "  ".join(extras))
-
-    console.print(Panel(understood, title=f"[bold blue]HarmonyForge  ·  {label}[/bold blue]", border_style="blue"))
-
-    if not params["producers"] and not params["artists"]:
-        console.print(
-            "[yellow]Tip:[/yellow] I didn't detect a producer or artist name. "
-            "Try: [italic]\"travis x metro f# 8 bars\"[/italic]\n"
-            "Available: " + "  ·  ".join(PRODUCERS_DB.keys())
+        # --- Resolve swing: use detected or auto-select based on style ---
+        style, label = _build_style_from_keys(
+            params["producers"], params["artists"], params["mood_words"]
         )
+        swing = params["swing"] or _default_swing(style.darkness_level, style.rhythmic_density)
 
-    _run_generation(
-        style=style,
-        key=params["key"],
-        scale=params["scale"],
-        bars=params["bars"],
-        bpm_override=params["bpm"],
-        swing=swing,
-        counter=params["counter"],
-        vocal=params["vocal"],
-        out_path=out_path,
-        open_folder=open_folder,
-    )
+        # --- Build output folder name from the query (slug) ---
+        import re
+        slug = re.sub(r"[^\w\s]", "", query.lower())
+        slug = re.sub(r"\s+", "_", slug.strip())[:40]
+        out_path = Path(out_dir) / slug
+
+        # --- What I understood panel ---
+        producers_display = "  +  ".join(
+            get_producer(k).name for k in params["producers"]
+        ) if params["producers"] else "[dim]none detected[/dim]"
+        artists_display = "  +  ".join(
+            get_artist(k).name for k in params["artists"]
+        ) if params["artists"] else "[dim]none[/dim]"
+
+        understood = Table(show_header=False, box=rich_box.SIMPLE, padding=(0, 1))
+        understood.add_row("[dim]query[/dim]",     f"[italic]{query}[/italic]")
+        understood.add_row("[cyan]producers[/cyan]", producers_display)
+        if params["artists"]:
+            understood.add_row("[cyan]artists[/cyan]",   artists_display)
+        understood.add_row("[cyan]key / scale[/cyan]", f"{params['key']} {params['scale']}")
+        understood.add_row("[cyan]BPM[/cyan]",       str(params["bpm"]) if params["bpm"] else "[dim]auto from style[/dim]")
+        understood.add_row("[cyan]bars[/cyan]",      str(params["bars"]))
+        understood.add_row("[cyan]swing[/cyan]",     swing)
+        if params["mood_words"]:
+            understood.add_row("[cyan]mood[/cyan]",  "  ".join(params["mood_words"]))
+        extras = []
+        if params["counter"]:
+            extras.append("counter-melody")
+        if params["vocal"]:
+            extras.append("vocal topline")
+        if extras:
+            understood.add_row("[cyan]extras[/cyan]", "  ".join(extras))
+
+        console.print(Panel(understood, title=f"[bold blue]HarmonyForge  ·  {label}[/bold blue]", border_style="blue"))
+
+        if not params["producers"] and not params["artists"]:
+            from harmonyforge.styles.producers import PRODUCERS_DB
+            from harmonyforge.styles.artists import ARTISTS_DB
+            console.print(
+                "[yellow]Tip:[/yellow] I didn't detect a producer or artist name. "
+                "Try: [italic]\"travis x metro f# 8 bars\"[/italic]\n"
+                "Available producers: " + "  ·  ".join(PRODUCERS_DB.keys()) + "\n"
+                "Available artists: " + "  ·  ".join(ARTISTS_DB.keys())
+            )
+
+        _run_generation(
+            style=style,
+            key=params["key"],
+            scale=params["scale"],
+            bars=params["bars"],
+            bpm_override=params["bpm"],
+            swing=swing,
+            counter=params["counter"],
+            vocal=params["vocal"],
+            out_path=out_path,
+            open_folder=open_folder,
+        )
+    except KeyError as e:
+        console.print(f"[bold red]Error:[/bold red] Unknown artist or producer: {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------

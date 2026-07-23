@@ -13,9 +13,10 @@ It is NOT a random chord generator. It is an aesthetic engine that models produc
 
 - **Music Genome Interpolation:** Blend styles mathematically. Want 70% Juice WRLD and 30% Metro Boomin? HarmonyForge handles the tension, syncopation, and darkness mapping.
 - **NLP Prompt Parser:** Use natural language (`--prompt "evil luxury cinematic"`) to directly map emotions to harmonic complexity and rhythmic density.
-- **Arrangement Engine (Phase 9):** Generates full songs. Intro, Verses, Hooks, and Breakdowns, mapped to an energy curve that naturally drops out bass and drums for dynamic contrast.
-- **Audio Intelligence (Phase 10 Foundation):** Capable of listening to a rendered `.wav` beat via `librosa`, extracting spectral features, finding 808 masking problems, and outputting producer feedback.
-- **Hybrid Export:** Exports `arrangement.json` and timeline-synced MIDI stems directly for your DAW.
+- **Natural Language CLI:** The `make` command understands plain English queries like `"dark travis x metro f# 8 bars"`.
+- **Professional MIDI Export:** Exports clean, timeline-synced MIDI stems with proper humanization and swing templates.
+- **Error Handling & Logging:** Robust error handling with proper logging for debugging and monitoring.
+- **Type Safety:** Full type hints and mypy compatibility for better IDE support and code quality.
 
 ## 📦 Installation
 
@@ -33,7 +34,19 @@ uv pip install -e ".[ai]"
 
 ## 🎹 Usage (CLI)
 
-Generate a full 64-bar arrangement for a specific stylistic blend:
+### Natural Language Mode (Recommended)
+
+Generate stems using plain English:
+
+```bash
+uv run harmonyforge make "dark travis x metro f# 8 bars"
+uv run harmonyforge make "tay keith x atl jacob d phrygian 163 bpm drill"
+uv run harmonyforge make "emotional neo-soul mike dean c dorian 16 bars vocal fills"
+```
+
+### Explicit Flags Mode
+
+For precise control over all parameters:
 
 ```bash
 uv run harmonyforge generate \
@@ -50,12 +63,19 @@ Check the `./output` folder for your MIDI stems!
 ## 🧪 Validation & Benchmarks
 
 HarmonyForge v2.1.0 has been rigorously tested:
-- **1000 Track Stress Test:** 0% crash rate guaranteed.
-- **V2.1 Benchmark:** Generates 50 industry-standard loops across Trap, Drill, Boom Bap, and R&B, logging average Musicality, Style Match, and Originality scores.
+- **Code Quality:** Full ruff linting compliance with professional code standards.
+- **Type Safety:** Comprehensive type hints for better IDE support and error prevention.
+- **Error Handling:** Robust exception handling throughout the codebase.
+- **Security:** No unsafe system calls or hardcoded credentials.
 
-To run the benchmark suite:
+To run the test suite:
 ```bash
-uv run python src/harmonyforge/testing/validation_suite.py
+uv run pytest tests/
+```
+
+To run the parser validation:
+```bash
+uv run python src/harmonyforge/testing/test_parser.py
 ```
 
 ## 🏗️ Architecture

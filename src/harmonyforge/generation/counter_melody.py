@@ -79,7 +79,7 @@ def generate_counter_melody(
         counter_scale_notes = [root_midi + (12 if register == "upper" else -12)]
 
     # --- Build occupied lead beats as INTEGER 16th-step keys (no float comparison) ---
-    occupied_16th_steps: set = set()
+    occupied_16th_steps: set[int] = set()
     for e in lead_events:
         start_16th = _to_16th_key(e.start_beat)
         dur_16ths  = max(1, int(round(e.duration_beats * 4.0)))
@@ -88,7 +88,7 @@ def generate_counter_melody(
 
     # --- Pre-compute lead direction at each 16th step ---
     # Maps 16th-step key -> lead melodic direction just before that step
-    lead_dir_at_step: dict = {}
+    lead_dir_at_step: dict[int, str] = {}
     directions = _lead_direction(lead_events)
     for i, e in enumerate(lead_events[:-1]):
         start_16th = _to_16th_key(e.start_beat)

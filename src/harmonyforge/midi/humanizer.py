@@ -9,13 +9,14 @@ Rules:
 """
 
 import random
+from typing import Dict
 import pretty_midi
 
 # Swing percentages relative to 16th-note grid duration.
 # swing_pct: offset for off-beat 16th notes (steps 1, 3)
 # lag_pct:   global pull/push BEHIND or AHEAD of beat (NOT applied to beat 1 / step 0)
 # jitter_sec: absolute micro-jitter in seconds (human imprecision)
-SWING_TEMPLATES = {
+SWING_TEMPLATES: Dict[str, Dict[str, float]] = {
     "straight":    {"swing_pct": 0.00,  "lag_pct": 0.00,  "jitter_sec": 0.006},
     "trap_bounce": {"swing_pct": 0.12,  "lag_pct": 0.03,  "jitter_sec": 0.010},  # 12% offbeat 16th push
     "dilla_swing": {"swing_pct": 0.22,  "lag_pct": 0.12,  "jitter_sec": 0.015},  # 22% lazy Dilla drag
