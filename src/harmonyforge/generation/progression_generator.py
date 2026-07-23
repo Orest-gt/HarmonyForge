@@ -52,12 +52,68 @@ class ProgressionGenerator:
 
         diatonic_roman = ["I", "ii", "iii", "IV", "V", "vi", "vii°"] if scale_name == "major" else ["i", "ii°", "III", "iv", "v", "VI", "VII"]
 
+        # ---------------------------------------------------------------
+        # Genre-aware chord movement graphs
+        # Keys = chord degree index, values = weighted next-chord choices.
+        # Trap/dark: heavily uses i → VII → VI → VII (degrees 0,6,5,6)
+        # R&B/soul:  ii → V → I turnaround (1,4,0)
+        # Ambient:   slow drifting, prefers vi and IV (5,3)
+        # ---------------------------------------------------------------
+        is_trap_dark  = (self.style.darkness_level > 0.7 and self.style.syncopation_level > 0.6)
+        is_rnb        = (self.style.harmonic_complexity > 0.6 and self.style.darkness_level < 0.6)
+        is_ambient    = (self.style.rhythmic_density < 0.4)
+
+        if is_trap_dark:
+            # Travis / Metro: i - VII - VI - VII loop, occasionally drops to iv or v
+            CHORD_GRAPH = {
+                0: [6, 5, 6],          # i  → VII (2x) or VI
+                6: [5, 0, 5],          # VII → VI (2x) or i
+                5: [6, 4, 6],          # VI  → VII (2x) or v
+                4: [0, 5],             # v   → i or VI
+                3: [0, 4],             # iv  → i or v
+                1: [4, 0],             # ii° → v or i
+                2: [0, 5],
+            }
+        elif is_rnb:
+            # Neo-soul / R&B: ii-V-I, iii-vi-IV-V turns
+            CHORD_GRAPH = {
+                0: [3, 5, 2],
+                1: [4, 5],
+                2: [5, 1],
+                3: [1, 4, 0],
+                4: [0, 5],
+                5: [1, 3, 4],
+                6: [0, 4],
+            }
+        elif is_ambient:
+            # Ambient: slow, stays near vi and IV, avoids V
+            CHORD_GRAPH = {
+                0: [5, 3],
+                3: [5, 0],
+                5: [3, 0],
+                4: [0, 5],
+                1: [0, 3],
+                2: [5, 0],
+                6: [0, 5],
+            }
+        else:
+            # Generic diatonic pop/default
+            CHORD_GRAPH = {
+                0: [3, 4, 5],
+                1: [4, 5],
+                2: [5, 1],
+                3: [1, 4, 0],
+                4: [0, 5],
+                5: [1, 3, 4],
+                6: [0, 4],
+            }
+
         progression_raw: List[List[int]] = []
         progression_voiced: List[List[int]] = []
         chord_events: List[ChordEvent] = []
         roman: List[str] = []
 
-        current_chord_idx = 0  # Start on tonic
+        current_chord_idx = 0  # Always start on tonic
 
         for i in range(bars):
             raw_chord = diatonic_pool[current_chord_idx]
@@ -67,11 +123,11 @@ class ProgressionGenerator:
             progression_voiced.append(voiced_chord)
             roman.append(diatonic_roman[current_chord_idx])
 
-            # Generate rhythmic chord strikes for this bar
+            # --- Rhythmic chord strike pattern ---
             bar_start_beat = i * 4.0
 
             if self.style.syncopation_level > 0.65:
-                # Syncopated bounce pattern (e.g. Metro Boomin / Nick Mira)
+                # Metro Boomin syncopated bounce: lands on 1 and the & of 2
                 chord_events.append(ChordEvent(
                     midi_notes=voiced_chord,
                     start_beat=bar_start_beat + 0.0,
@@ -85,7 +141,7 @@ class ProgressionGenerator:
                     velocity=85
                 ))
             elif self.style.rhythmic_density > 0.75:
-                # Staccato synth stabs (e.g. Rage / Drill)
+                # Rage / Drill staccato stabs
                 chord_events.append(ChordEvent(
                     midi_notes=voiced_chord,
                     start_beat=bar_start_beat + 0.0,
@@ -99,7 +155,7 @@ class ProgressionGenerator:
                     velocity=95
                 ))
             else:
-                # Standard sustained pad / ambient swell
+                # Ambient sustained pad / swell
                 chord_events.append(ChordEvent(
                     midi_notes=voiced_chord,
                     start_beat=bar_start_beat + 0.0,
@@ -107,23 +163,15 @@ class ProgressionGenerator:
                     velocity=90
                 ))
 
-            # Decide next chord index
+            # --- Next chord selection ---
+            # With repetition_tendency: hold the chord on odd bars
             if rng.random() < self.style.repetition_tendency and i > 0 and i % 2 != 0:
-                current_chord_idx = current_chord_idx
+                pass  # Hold current chord (repetition — very trap)
             else:
-                if current_chord_idx == 0:
-                    choices = [3, 4, 5]
-                elif current_chord_idx in [3, 5]:
-                    choices = [1, 4]
-                elif current_chord_idx == 4:
-                    choices = [0, 5]
-                else:
-                    choices = [0, 3, 4]
-
+                choices = CHORD_GRAPH.get(current_chord_idx, [0, 3, 5])
                 choices = [c for c in choices if c < len(diatonic_pool)]
                 if not choices:
                     choices = [0]
-
                 current_chord_idx = rng.choice(choices)
 
         bpm = rng.randint(self.style.preferred_bpm_range[0], self.style.preferred_bpm_range[1])
