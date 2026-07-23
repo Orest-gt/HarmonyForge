@@ -6,9 +6,11 @@ All notable changes to HarmonyForge will be documented in this file.
 
 ### Fixed
 - **Harmonic Gravity Collapse:** Boundary resolution now collapses to the nearest active chord tone and handles chord changes more musically at phrase cadences.
+- **Melody Stability:** Strengthened chord-tone bias in dark, high-tension passages and suppressed repeated stuck-note behavior for cleaner lead lines.
 - **Regression Tests:** Added crash-style regression coverage for inversion handling, octave elasticity, and boundary resolution behavior.
 
 ### Improved
+- **Optional Humanization:** Humanization is now explicitly enabled via `--humanize`, making default exports predictable and deterministic.
 - **Repository Hygiene:** Expanded ignore rules to exclude generated MIDI output, local caches, and editor-specific clutter from the shared repository.
 
 ## [2.1.0] - 2026-07-23

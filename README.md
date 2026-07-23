@@ -24,6 +24,8 @@ It is NOT a random chord generator. It is an aesthetic engine that models produc
 
 Recent work on the generation engine has improved melodic phrasing at phrase boundaries:
 - **Boundary-aware collapse:** melody resolution now settles to the nearest active chord tone at cadence points and respects chord changes cleanly.
+- **Stronger chord anchoring:** dark, high-tension melodies now prefer chord tones more aggressively and avoid repeated stuck-note behavior.
+- **Optional humanization:** swing/humanization is now explicitly enabled with `--humanize`, keeping default exports predictable.
 - **Expanded style profiles:** the artist/producer database now includes richer, more realistic signatures for modern trap, drill, and R&B-inspired production.
 - **Regression coverage:** dedicated crash tests now cover inversion handling, octave jump behavior, and boundary resolution instinct.
 - **Repository hygiene:** generated MIDI outputs, caches, and local-only artifacts are now ignored so the repo stays clean for collaborators.
@@ -53,6 +55,8 @@ uv run harmonyforge make "dark travis x metro f# 8 bars"
 uv run harmonyforge make "tay keith x atl jacob d phrygian 163 bpm drill"
 uv run harmonyforge make "emotional neo-soul mike dean c dorian 16 bars vocal fills"
 ```
+
+Add `--humanize` to enable tempo-aware swing and humanization on export.
 
 ### Explicit Flags Mode
 
