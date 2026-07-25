@@ -26,6 +26,15 @@ from pydantic import BaseModel
 from harmonyforge.core.config import config
 from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.theory.scales import get_scale, get_notes_in_scale
+from harmonyforge.theory.harmony import safe_pitch_to_midi
+
+
+# Optional AI integration (only import if available)
+try:
+    from harmonyforge.ai.groq_service import get_groq_service, AIResponse
+    AI_AVAILABLE = True
+except ImportError:
+    AI_AVAILABLE = False
 
 
 def snap_to_16th(beat: float) -> float:
@@ -313,7 +322,7 @@ def generate_melody(
 
     events: List[MelodyEvent] = []
     import music21.pitch
-    root_midi = music21.pitch.Pitch(f"{key_root}4").midi
+    root_midi = safe_pitch_to_midi(key_root, octave=4)
 
     scale = get_scale(scale_name)
     all_scale_notes = get_notes_in_scale(root_midi, scale, octaves=3)
@@ -342,6 +351,8 @@ def generate_melody(
 
     # Rhythmic active mask (rests vs notes)
     active_mask = [rng.random() <= (0.30 + 0.60 * style.rhythmic_density) for _ in range(num_notes)]
+    if num_notes > 0:
+        active_mask[0] = True
     if not any(active_mask) and num_notes > 0:
         active_mask[0] = True
 
@@ -357,7 +368,10 @@ def generate_melody(
     else:
         anchor_pitch = scale_notes[center_idx]
 
-    anchor_scale_idx = scale_notes.index(anchor_pitch)
+    try:
+        anchor_scale_idx = scale_notes.index(anchor_pitch)
+    except ValueError:
+        anchor_scale_idx = 0  # fallback to root
 
     # Map phrasing wave to scale degree indices
     phrase_arc = _generate_phrase_arc(num_notes, rng)
@@ -371,6 +385,8 @@ def generate_melody(
         step_offset = int(round((t_val - 0.5) * 2.0 * max_step_span))
         target_idx = max(0, min(len(scale_notes) - 1, anchor_scale_idx + step_offset))
         motif_pitches.append(scale_notes[target_idx])
+    
+
 
     # --- 3. GENERATE FULL PROGRESSION WITH STRICT FORM (A - A' - A - B) ---
     total_bars = len(progression_midi)
@@ -404,11 +420,17 @@ def generate_melody(
             pivot_pitch = min(matching_chord_tones, key=lambda n: abs(n - scale_notes[center_idx]))
         else:
             pivot_pitch = scale_notes[center_idx]
-        pivot_idx = scale_notes.index(pivot_pitch)
+        try:
+            pivot_idx = scale_notes.index(pivot_pitch)
+        except ValueError:
+            pivot_idx = 0
 
         block_pitches: List[int] = []
         for i, base_pitch in enumerate(motif_pitches):
-            base_idx = scale_notes.index(base_pitch)
+            try:
+                base_idx = scale_notes.index(base_pitch)
+            except ValueError:
+                base_idx = 0
             pitch_idx = base_idx
 
             if form == "A":
@@ -452,6 +474,10 @@ def generate_melody(
                 break
 
             current_beat_snapped = snap_to_16th(current_beat)
+
+            if i == 0:
+                current_beat_snapped = snap_to_16th(block_beat_offset)
+                active_mask[i] = True
 
             if active_mask[i]:
                 pitch = block_pitches[i]
@@ -538,3 +564,115 @@ def generate_melody(
             current_beat = snap_to_16th(current_beat + dur)
 
     return events
+
+
+def refine_melody_with_ai(
+    melody_events: List[MelodyEvent],
+    scale_name: str,
+    key_root: str,
+    style: StyleSignature,
+    enable_ai: bool = False,
+    ai_confidence_threshold: float = 0.7
+) -> tuple[List[MelodyEvent], dict]:
+    """
+    Refine a melody using AI suggestions (if enabled).
+    
+    This function provides a controlled AI integration:
+    - Mock-first: Uses predefined improvements by default
+    - Cost monitoring: Shows exact cost per operation
+    - Confidence threshold: Only applies high-confidence suggestions
+    - Safe: Doesn't modify original without explicit enablement
+    
+    Args:
+        melody_events: Original melody events
+        scale_name: Musical scale (e.g., "Harmonic Minor")
+        key_root: Root note (e.g., "D")
+        style: Producer style signature
+        enable_ai: If True, use AI suggestions (mock or real based on service config)
+        ai_confidence_threshold: Minimum confidence to apply suggestions (0.0-1.0)
+        
+    Returns:
+        Tuple of (refined_events, metadata_dict)
+        metadata includes: applied_suggestions, cost, was_mock, etc.
+    """
+    # If AI is not available or not enabled, return original
+    if not AI_AVAILABLE or not enable_ai:
+        return melody_events, {
+            "ai_used": False,
+            "reason": "AI not available or not enabled",
+            "applied_suggestions": 0,
+            "cost_usd": 0.0
+        }
+    
+    # Get AI service (uses dry-run mode by default)
+    try:
+        ai_service = get_groq_service(dry_run=True)  # Always start with dry-run
+    except Exception as e:
+        return melody_events, {
+            "ai_used": False,
+            "reason": f"AI service error: {str(e)}",
+            "applied_suggestions": 0,
+            "cost_usd": 0.0
+        }
+    
+    # Extract melody notes for AI analysis
+    melody_notes = [event.midi_note for event in melody_events]
+    
+    # Get AI suggestions
+    try:
+        response = ai_service.refine_melody(
+            melody_notes=melody_notes,
+            scale_name=scale_name,
+            key_root=key_root,
+            style_context="trap"  # Could be derived from style
+        )
+    except Exception as e:
+        return melody_events, {
+            "ai_used": False,
+            "reason": f"AI refinement error: {str(e)}",
+            "applied_suggestions": 0,
+            "cost_usd": 0.0
+        }
+    
+    # Apply high-confidence suggestions
+    refined_events = list(melody_events)  # Start with copy
+    applied_count = 0
+    
+    for suggestion in response.suggestions:
+        if suggestion.confidence >= ai_confidence_threshold:
+            # Find matching notes and apply suggestion
+            for i, event in enumerate(refined_events):
+                if event.midi_note == suggestion.original_note:
+                    # Apply the suggestion
+                    refined_events[i] = MelodyEvent(
+                        midi_note=suggestion.suggested_note,
+                        start_beat=event.start_beat,
+                        duration_beats=event.duration_beats,
+                        velocity=event.velocity,
+                        tension=event.tension
+                    )
+                    applied_count += 1
+                    break  # Only apply to first match
+    
+    # Return refined melody with metadata
+    return refined_events, {
+        "ai_used": True,
+        "was_mock": response.was_mock,
+        "model_used": response.model_used,
+        "applied_suggestions": applied_count,
+        "total_suggestions": len(response.suggestions),
+        "cost_usd": response.token_usage.total_cost,
+        "input_tokens": response.token_usage.input_tokens,
+        "output_tokens": response.token_usage.output_tokens,
+        "overall_improvement": response.overall_improvement,
+        "suggestions": [
+            {
+                "original": s.original_note,
+                "suggested": s.suggested_note,
+                "confidence": s.confidence,
+                "reason": s.reason,
+                "category": s.category
+            }
+            for s in response.suggestions
+        ]
+    }
