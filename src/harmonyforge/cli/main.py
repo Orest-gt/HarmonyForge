@@ -22,12 +22,13 @@ from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.core.config import config
 from harmonyforge.styles.artists import get_artist
 from harmonyforge.styles.producers import get_producer
-from harmonyforge.ai.prompt_parser import parse_prompt_to_signature, _default_swing
+from harmonyforge.ai.prompt_parser import parse_prompt_to_signature, _default_swing, extract_structured_params
 from harmonyforge.generation.progression_generator import ProgressionGenerator
 from harmonyforge.generation.melody_generator import generate_melody
 from harmonyforge.generation.bass_generator import generate_808_pattern
 from harmonyforge.generation.counter_melody import generate_counter_melody
 from harmonyforge.generation.vocal_topline import generate_vocal_topline
+from harmonyforge.generation.fill_melody import generate_fill_melody
 
 app = typer.Typer(
     help=(
@@ -41,7 +42,7 @@ app = typer.Typer(
 console = Console()
 
 
-def _parse_root_prompt_args(args: Sequence[str]) -> tuple[str, Optional[int], str, bool, bool, bool, bool]:
+def _parse_root_prompt_args(args: Sequence[str]) -> tuple[str, Optional[int], str, bool, bool, bool, bool, bool]:
     """Parse a freeform prompt plus a few simple options from the root CLI."""
     prompt_parts: list[str] = []
     seed: Optional[int] = None
@@ -49,6 +50,7 @@ def _parse_root_prompt_args(args: Sequence[str]) -> tuple[str, Optional[int], st
     open_folder = True
     counter = False
     vocal = False
+    fill = False
     humanize = False
     i = 0
     while i < len(args):
@@ -71,6 +73,9 @@ def _parse_root_prompt_args(args: Sequence[str]) -> tuple[str, Optional[int], st
         elif token == "--vocal":
             vocal = True
             i += 1
+        elif token == "--fill":
+            fill = True
+            i += 1
         elif token == "--humanize":
             humanize = True
             i += 1
@@ -79,7 +84,7 @@ def _parse_root_prompt_args(args: Sequence[str]) -> tuple[str, Optional[int], st
         else:
             prompt_parts.append(token)
             i += 1
-    return " ".join(prompt_parts).strip(), seed, out_dir, open_folder, counter, vocal, humanize
+    return " ".join(prompt_parts).strip(), seed, out_dir, open_folder, counter, vocal, fill, humanize
 
 
 def main(args: Optional[Sequence[str]] = None) -> None:
@@ -89,17 +94,18 @@ def main(args: Optional[Sequence[str]] = None) -> None:
         console.print("harmonyforge 2.1.0")
         return
     if argv and argv[0] not in {"make", "generate", "arrange", "info"} and not argv[0].startswith("-"):
-        prompt, seed, out_dir, open_folder, counter, vocal, humanize = _parse_root_prompt_args(argv)
-        if prompt:
-            _run_make_command(
-                query=prompt,
-                seed=seed,
-                out_dir=out_dir,
-                open_folder=open_folder,
-                counter=counter,
-                vocal=vocal,
-                humanize=humanize,
-            )
+            prompt, seed, out_dir, open_folder, counter, vocal, fill, humanize = _parse_root_prompt_args(argv)
+            if prompt:
+                _run_make_command(
+                    query=prompt,
+                    seed=seed,
+                    out_dir=out_dir,
+                    open_folder=open_folder,
+                    counter=counter,
+                    vocal=vocal,
+                    fill=fill,
+                    humanize=humanize,
+                )
             return
 
     command = typer.main.get_command(app)
@@ -179,6 +185,7 @@ def _run_generation(
     swing: str,
     counter: bool,
     vocal: bool,
+    fill: bool,
     humanize: bool,
     out_path: Path,
     open_folder: bool,
@@ -196,6 +203,7 @@ def _run_generation(
         bass   = generate_808_pattern(prog.chords_midi, style, prog.bpm)
         counter_events = generate_counter_melody(melody, prog.chords_midi, scale, key, style, prog.bpm) if counter else None
         vocal_events   = generate_vocal_topline(prog.chords_midi, scale, key, style, prog.bpm) if vocal else None
+        fill_events    = generate_fill_melody(prog.chords_midi, scale, key, style, prog.bpm) if fill else None
 
         out_path.mkdir(exist_ok=True, parents=True)
         export_loop(
@@ -206,6 +214,7 @@ def _run_generation(
             bpm=prog.bpm,
             counter_melody=counter_events,
             vocal_topline=vocal_events,
+            fill_melody=fill_events,
             swing_style=swing,
             humanize=humanize,
         )
@@ -215,6 +224,8 @@ def _run_generation(
             stems.append("stem_counter_melody.mid")
         if vocal_events:
             stems.append("stem_vocal_topline.mid")
+        if fill_events:
+            stems.append("stem_fill.mid")
 
         table = Table(show_header=False, box=None, padding=(0, 1))
         table.add_row("[green]OK[/green]", "BPM",     str(prog.bpm))
@@ -250,6 +261,7 @@ def _run_make_command(
     open_folder: bool,
     counter: bool = False,
     vocal: bool = False,
+    fill: bool = False,
     humanize: bool = False,
 ) -> None:
     try:
@@ -290,14 +302,20 @@ def _run_make_command(
             understood.add_row("[cyan]mood[/cyan]", "  ".join(params["mood_words"]))
         counter_requested = counter or params["counter"]
         vocal_requested = vocal or params["vocal"]
+        fill_requested = fill or params["fill"]
 
         extras = []
         if counter_requested:
             extras.append("counter-melody")
         if vocal_requested:
             extras.append("vocal topline")
+        if fill_requested:
+            extras.append("fill/pad")
         if extras:
             understood.add_row("[cyan]extras[/cyan]", "  ".join(extras))
+
+        if params.get("instrument_requests"):
+            understood.add_row("[cyan]requests[/cyan]", "  ".join(params["instrument_requests"]))
 
         console.print(Panel(understood, title=f"[bold blue]HarmonyForge  ·  {label}[/bold blue]", border_style="blue"))
 
@@ -320,6 +338,7 @@ def _run_make_command(
             swing=swing,
             counter=counter_requested,
             vocal=vocal_requested,
+            fill=fill_requested,
             humanize=humanize,
             out_path=out_path,
             open_folder=open_folder,
@@ -350,10 +369,11 @@ def make(
     open_folder: bool = typer.Option(True, "--open/--no-open", help="Auto-open output folder when done"),
     counter: bool = typer.Option(False, "--counter", help="Add counter-melody stem"),
     vocal: bool = typer.Option(False, "--vocal", help="Add singable vocal topline stem"),
+    fill: bool = typer.Option(False, "--fill", help="Add fill/pad stem"),
     humanize: bool = typer.Option(False, "--humanize", help="Apply swing/humanization to exported stems"),
 ) -> None:
     """Generate stems from a natural-language description — no flags needed."""
-    _run_make_command(query=query, seed=seed, out_dir=out_dir, open_folder=open_folder, counter=counter, vocal=vocal, humanize=humanize)
+    _run_make_command(query=query, seed=seed, out_dir=out_dir, open_folder=open_folder, counter=counter, vocal=vocal, fill=fill, humanize=humanize)
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +391,7 @@ def generate(
     prompt:   str          = typer.Option("",              "--prompt",          help="Mood words e.g. 'dark ambient sparse'"),
     counter:  bool         = typer.Option(False,           "--counter",         help="Add counter-melody stem"),
     vocal:    bool         = typer.Option(False,           "--vocal",           help="Add singable vocal topline stem"),
+    fill:     bool         = typer.Option(False,           "--fill",            help="Add fill/pad stem"),
     swing:    str          = typer.Option("straight",      "--swing",           help="Swing template (straight | trap_bounce | dilla_swing | drill_push | afro_triplet)"),
     humanize: bool         = typer.Option(False,           "--humanize",        help="Apply swing/humanization to exported stems"),
     seed:     Optional[int]= typer.Option(None,            "--seed",            help="Random seed for deterministic output"),
@@ -393,9 +414,12 @@ def generate(
     ))
 
     out_path = Path(out_dir)
+    prompt_params = extract_structured_params(prompt) if prompt else {"fill": False, "counter": False, "vocal": False}
     _run_generation(
         style=style, key=key, scale=scale, bars=bars, bpm_override=bpm,
-        swing=swing, counter=counter, vocal=vocal, humanize=humanize,
+        swing=swing, counter=counter or prompt_params.get("counter", False),
+        vocal=vocal or prompt_params.get("vocal", False), fill=fill or prompt_params.get("fill", False),
+        humanize=humanize,
         out_path=out_path, open_folder=open_folder,
     )
 

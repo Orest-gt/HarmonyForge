@@ -16,6 +16,7 @@ from typing import List
 from harmonyforge.core.config import config
 from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.theory.scales import get_scale, get_notes_in_scale
+from harmonyforge.theory.harmony import safe_pitch_to_midi
 from harmonyforge.generation.melody_generator import MelodyEvent, select_weighted_pitch
 
 
@@ -62,7 +63,7 @@ def generate_counter_melody(
 
     events: List[MelodyEvent] = []
     import music21.pitch
-    root_midi = music21.pitch.Pitch(f"{key_root}4").midi
+    root_midi = safe_pitch_to_midi(key_root, octave=4)
 
     scale = get_scale(scale_name)
     all_scale_notes = get_notes_in_scale(root_midi, scale, octaves=4)
@@ -116,7 +117,11 @@ def generate_counter_melody(
             lead_dir = lead_dir_at_step.get(step_16th, 0)
 
             if lead_dir != 0 and counter_scale_notes:
-                mid_idx = counter_scale_notes.index(min(counter_scale_notes, key=lambda n: abs(n - prev_counter_pitch)))
+                closest_pitch = min(counter_scale_notes, key=lambda n: abs(n - prev_counter_pitch))
+                try:
+                    mid_idx = counter_scale_notes.index(closest_pitch)
+                except ValueError:
+                    mid_idx = 0
                 if lead_dir == 1:
                     contrary_pool = counter_scale_notes[: max(1, mid_idx + 1)]
                 else:

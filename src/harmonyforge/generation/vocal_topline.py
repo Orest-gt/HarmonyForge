@@ -12,6 +12,7 @@ from typing import List
 from harmonyforge.core.config import config
 from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.theory.scales import get_scale, get_notes_in_scale
+from harmonyforge.theory.harmony import safe_pitch_to_midi
 from harmonyforge.generation.melody_generator import MelodyEvent, select_weighted_pitch
 
 
@@ -33,7 +34,7 @@ def generate_vocal_topline(
 
     events: List[MelodyEvent] = []
     import music21.pitch
-    root_midi = music21.pitch.Pitch(f"{key_root}4").midi
+    root_midi = safe_pitch_to_midi(key_root, octave=4)
 
     scale = get_scale(scale_name)
     all_scale_notes = get_notes_in_scale(root_midi, scale, octaves=2)

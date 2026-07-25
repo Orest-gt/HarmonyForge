@@ -10,7 +10,7 @@ import music21.pitch
 
 from harmonyforge.core.config import config
 from harmonyforge.styles.genome import StyleSignature
-from harmonyforge.theory.harmony import get_diatonic_chords, voice_chord_pro
+from harmonyforge.theory.harmony import get_diatonic_chords, voice_chord_pro, safe_pitch_to_midi
 
 
 class ChordEvent(BaseModel):
@@ -44,7 +44,7 @@ class ProgressionGenerator:
         else:
             rng = random.Random()
 
-        root_midi = music21.pitch.Pitch(f"{root_note}3").midi
+        root_midi = safe_pitch_to_midi(root_note, octave=3)
 
         # Base diatonic chords (Triads by default, or 7ths if complexity > 0.6)
         chord_type = "7th" if self.style.harmonic_complexity > 0.6 else "triad"

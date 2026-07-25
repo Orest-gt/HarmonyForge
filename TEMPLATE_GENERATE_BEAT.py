@@ -50,7 +50,7 @@ PRODUCER = NICK_MIRA  # Options: NICK_MIRA, METRO_BOOMIN, SOUTHSIDE, TAY_KEITH, 
 BPM = 138
 KEY_ROOT = "D"  # String format: "C", "D", "F#", "Bb", etc.
 SCALE_NAME = "Harmonic Minor"  # String format: "Major", "Minor", "Harmonic Minor", "Phrygian", etc.
-BARS = 4
+BARS = 8
 OUTPUT_FOLDER = "OREST_PRODUCTIONS"  # Your output folder name
 SWING_STYLE = "trap_bounce"  # Options: "straight", "trap_bounce", "dilla_swing", "drill_push", "afro_triplet"
 

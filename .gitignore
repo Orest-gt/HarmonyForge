@@ -39,6 +39,12 @@ tmp_test_output/
 # Environment configuration (contains API keys)
 .env
 
+# Test files (keep only essential ones)
+debug_*.py
+analyze_*.py
+generate_*.py
+test_gravity_*.py
+
 # Local analysis / scratch files
 inspect_cli.py
 midi_analysis_report.txt

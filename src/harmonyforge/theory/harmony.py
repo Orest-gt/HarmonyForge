@@ -3,9 +3,18 @@ Core harmony logic: chord generation, pro voicings (drop-2, open spread), modal 
 """
 
 from typing import List
+import music21
 from harmonyforge.styles.genome import StyleSignature
 from harmonyforge.theory.scales import get_scale, get_notes_in_scale
 from harmonyforge.theory.chords import get_chord, construct_chord_notes
+
+
+def safe_pitch_to_midi(key_str: str, octave: int = 4) -> int:
+    """Safely convert key string to MIDI with error handling."""
+    try:
+        return music21.pitch.Pitch(f"{key_str}{octave}").midi
+    except Exception as e:
+        raise ValueError(f"Invalid key '{key_str}': {e}")
 
 
 def get_diatonic_chords(root_midi: int, scale_name: str, chord_type: str = "triad") -> List[List[int]]:
@@ -20,7 +29,13 @@ def get_diatonic_chords(root_midi: int, scale_name: str, chord_type: str = "tria
     steps = 3 if chord_type == "triad" else 4
 
     for i in range(degrees_count):
-        chord_notes = [scale_notes[i + (j * 2)] for j in range(steps)]
+        chord_notes = []
+        for j in range(steps):
+            note_idx = i + (j * 2)
+            # Wrap around for scales with different note counts
+            if note_idx >= len(scale_notes):
+                note_idx -= len(scale_notes)
+            chord_notes.append(scale_notes[note_idx])
         chords.append(chord_notes)
 
     return chords
@@ -58,11 +73,13 @@ def voice_chord_pro(chord_notes: List[int], style: StyleSignature) -> List[int]:
         # Move highest note up an octave for wide synth/piano spread
         rh_notes[-1] += 12
 
-    # 4. Optional 9th color extension if high complexity
+    # 4. Optional 9th color extension if high complexity AND if 9th is in the original chord
     if style.harmonic_complexity > 0.7:
+        # Only add 9th if it was in the original chord to avoid adding wrong notes
         ninth_pc = (root_pc + 2) % 12
-        ninth_pitch = ninth_pc + 72
-        rh_notes.append(ninth_pitch)
+        if ninth_pc in pcs:
+            ninth_pitch = ninth_pc + 72
+            rh_notes.append(ninth_pitch)
 
     voiced = sorted(list(set([lh_bass] + rh_notes)))
     return voiced

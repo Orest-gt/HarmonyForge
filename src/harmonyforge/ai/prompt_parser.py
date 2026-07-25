@@ -194,7 +194,7 @@ def extract_structured_params(query: str) -> dict[str, Any]:
       - Residual mood words       → fed into ONTOLOGY genome shifts
 
     Returns a dict with keys:
-        producers, artists, key, scale, bpm, bars, swing, counter, vocal, mood_words
+        producers, artists, key, scale, bpm, bars, swing, counter, vocal, fill, instrument_requests, mood_words
     """
     # Lazy import to avoid circular dependency at module level
     from harmonyforge.styles.artists import ARTISTS_DB
@@ -205,21 +205,24 @@ def extract_structured_params(query: str) -> dict[str, Any]:
     text_norm = re.sub(r"[,.\-!?;:]", " ", text)
 
     result: dict[str, Any] = {
-        "producers":  [],
-        "artists":    [],
-        "key":        "C",
-        "scale":      "minor",
-        "bpm":        None,
-        "bars":       8,
-        "swing":      None,    # resolved later if not found
-        "counter":    False,
-        "vocal":      False,
-        "mood_words": [],
+        "producers":          [],
+        "artists":            [],
+        "key":                "C",
+        "scale":              "minor",
+        "bpm":                None,
+        "bars":               8,
+        "swing":              None,    # resolved later if not found
+        "counter":            False,
+        "vocal":              False,
+        "fill":               False,
+        "instrument_requests": [],
+        "mood_words":         [],
     }
     
     # Type assertions for mypy
     producers_list: list[str] = result["producers"]  # type: ignore
     artists_list: list[str] = result["artists"]      # type: ignore
+    instrument_requests: list[str] = result["instrument_requests"]  # type: ignore
     mood_words_list: list[str] = result["mood_words"]  # type: ignore
 
     consumed_spans: list[tuple[int, int]] = []   # list of (start, end) char spans consumed
@@ -328,11 +331,25 @@ def extract_structured_params(query: str) -> dict[str, Any]:
             mark(swing_match)
             break
 
-    # ---- 9. Stem flags ----
-    if re.search(r"\b(?:counter|fills?|response|countermelody)\b", text_norm):
+    def add_request(request: str) -> None:
+        if request not in instrument_requests:
+            instrument_requests.append(request)
+
+    # ---- 9. Stem flags and explicit instrument requests ----
+    if re.search(r"\b(?:counter|response|countermelody|counter-melody)\b", text_norm):
         result["counter"] = True
-    if re.search(r"\b(?:vocal|vocals?|topline|hook|singable)\b", text_norm):
+        add_request("counter_melody")
+    if re.search(r"\b(?:vocal|vocals?|topline|hook|chorus|singable|choir|chant|vocal chops?|vocal chop)\b", text_norm):
         result["vocal"] = True
+        add_request("vocal")
+    if re.search(r"\b(?:fill|fills|pad|pads|texture|synth pad|synth pads)\b", text_norm):
+        result["fill"] = True
+        add_request("synth_pad")
+    if re.search(r"\b(?:arpeggio|arp)\b", text_norm):
+        result["fill"] = True
+        add_request("arpeggio")
+    if re.search(r"\b(?:808|sub bass|sub|bass)\b", text_norm):
+        add_request("808")
 
     # ---- 10. Residual mood words (for genome ONTOLOGY shifts) ----
     _STOP = {"a", "an", "the", "in", "at", "of", "for", "me", "make", "like",

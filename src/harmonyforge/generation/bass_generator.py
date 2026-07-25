@@ -53,7 +53,8 @@ def generate_808_pattern(
                 p += 12
             bass_candidates.append(p)
 
-        root_bass = bass_candidates[0]
+        # The real root is the lowest note in the chord (fundamental)
+        root_bass = min(bass_candidates)
         bar_start = i * 4.0
         next_bar_start = (i + 1) * 4.0
 
@@ -61,13 +62,13 @@ def generate_808_pattern(
         current_chord_pcs = [p % 12 for p in chord]
         current_chord_tones = [p for p in bass_candidates if p % 12 in current_chord_pcs]
 
-        if (prev_bass_pitch is not None
-                and rng.random() > style.root_anchor_prob
+        # Primary logic: Strong root anchor for professional bass lines
+        if rng.random() <= style.root_anchor_prob:
+            beat1_pitch = root_bass          # Root (most common - priority)
+        elif (prev_bass_pitch is not None
                 and rng.random() < style.repetition_tendency
                 and prev_bass_pitch % 12 in current_chord_pcs):
-            beat1_pitch = prev_bass_pitch   # Pedal point only when it still fits the current chord
-        elif rng.random() <= style.root_anchor_prob:
-            beat1_pitch = root_bass          # Root (most common)
+            beat1_pitch = prev_bass_pitch   # Pedal point only after root anchor check
         elif current_chord_tones:
             beat1_pitch = min(current_chord_tones, key=lambda p: abs(p - (prev_bass_pitch or root_bass)))
         else:

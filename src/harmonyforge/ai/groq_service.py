@@ -226,7 +226,7 @@ class GroqAIService:
                     }
                 ],
                 temperature=0.7,
-                max_tokens=100,  # Limit output tokens for cost control
+                max_tokens=200,  # Increased to avoid JSON validation errors
                 response_format={"type": "json_object"}
             )
             

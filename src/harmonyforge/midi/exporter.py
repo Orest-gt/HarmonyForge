@@ -33,6 +33,8 @@ def export_loop(
     bpm: int,
     counter_melody: Optional["List[MelodyEvent]"] = None,
     vocal_topline: Optional["List[MelodyEvent]"] = None,
+    fill_melody: Optional["List[MelodyEvent]"] = None,
+    drums: Optional["List"] = None,
     swing_style: str = "straight",
     humanize: bool = False,
 ) -> None:
@@ -166,117 +168,49 @@ def export_loop(
         pm_vocal.instruments.append(inst_vocal)
         pm_vocal.write(str(out_dir / "stem_vocal_topline.mid"))
 
-
-def export_arrangement(arrangement: "Any", out_dir: Path, humanize: bool = False) -> None:
-    """
-    Experimental full-song export used by `harmonyforge arrange`.
-    Produces: full_arrangement.mid, stem_*.mid, arrangement.json
-    """
-    out_dir.mkdir(exist_ok=True, parents=True)
-    bpm      = arrangement.bpm
-    beat_dur = 60.0 / bpm
-
-    pm_chords  = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
-    inst_chord = pretty_midi.Instrument(program=0,  name="Chords")
-    pm_bass    = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
-    inst_bass  = pretty_midi.Instrument(program=38, name="808 Bass")
-    pm_melody  = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
-    inst_mel   = pretty_midi.Instrument(program=81, name="Lead Melody")
-
-    pm_full = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
-    pm_full.instruments.extend([inst_chord, inst_bass, inst_mel])
-    
-    # Add TimeSignature (4/4) at time 0.0 for DAW compatibility
-    for midi_obj in [pm_full, pm_chords, pm_bass, pm_mel]:
-        midi_obj.time_signature_changes.append(
+    # --- Fill Melody (Optional) ---
+    if fill_melody:
+        pm_fill = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
+        inst_fill = pretty_midi.Instrument(program=89, name="Fill Melody")
+        
+        # Add TimeSignature (4/4) at time 0.0 for DAW compatibility
+        pm_fill.time_signature_changes.append(
             pretty_midi.TimeSignature(numerator=4, denominator=4, time=0.0)
         )
+        for f in fill_melody:
+            st = _to_seconds(f.start_beat, bpm)
+            et = st + (_to_seconds(f.duration_beats, bpm))
+            inst_fill.notes.append(pretty_midi.Note(
+                velocity=f.velocity, pitch=f.midi_note, start=st, end=et,
+            ))
+        if humanize:
+            humanize_instrument(inst_fill, style_name=swing_style, bpm=bpm)
+        pm_fill.instruments.append(inst_fill)
+        pm_fill.write(str(out_dir / "stem_fill.mid"))
 
-    meta_json: Dict[str, Any] = {
-        "bpm": bpm,
-        "key": arrangement.key,
-        "scale": arrangement.scale,
-        "sections": [],
-    }
-
-    for section in arrangement.sections:
-        start_sec = (section.start_bar * 4.0) * beat_dur
-        bar_dur   = beat_dur * 4.0
-
-        meta_json["sections"].append({
-            "name":               section.name,
-            "start_bar":          section.start_bar,
-            "length_bars":        section.bars,
-            "energy":             section.energy,
-            "active_instruments": section.active_instruments,
-        })
-
-        if "chords" in section.active_instruments:
-            if hasattr(section.progression, "chord_events") and section.progression.chord_events:
-                loops = max(1, section.bars // 8)
-                for li in range(loops):
-                    loop_offset = start_sec + (li * 8 * bar_dur)
-                    for ce in section.progression.chord_events:
-                        st = loop_offset + (ce.start_beat * beat_dur)
-                        et = st + (ce.duration_beats * beat_dur)
-                        for pitch in ce.midi_notes:
-                            inst_chord.notes.append(pretty_midi.Note(
-                                velocity=int(ce.velocity * section.energy),
-                                pitch=pitch, start=st, end=et,
-                            ))
-            else:
-                loops = max(1, section.bars // 8)
-                for li in range(loops):
-                    t = start_sec + li * 8 * bar_dur
-                    for chord in section.progression.chords_midi:
-                        for pitch in chord:
-                            inst_chord.notes.append(pretty_midi.Note(
-                                velocity=int(100 * section.energy),
-                                pitch=pitch, start=t, end=t + bar_dur,
-                            ))
-                        t += bar_dur
-
-        if "bass" in section.active_instruments:
-            for b in section.bass:
-                st = start_sec + (b.start_beat * beat_dur)
-                et = st + (b.duration_beats * beat_dur)
-                inst_bass.notes.append(pretty_midi.Note(
-                    velocity=b.velocity, pitch=b.midi_note, start=st, end=et,
-                ))
-                if b.pitch_bend != 0:
-                    inst_bass.pitch_bends.append(
-                        pretty_midi.PitchBend(pitch=b.pitch_bend, time=st + 0.2 * beat_dur)
-                    )
-                    inst_bass.pitch_bends.append(
-                        pretty_midi.PitchBend(pitch=0, time=et)
-                    )
-
-        if "melody" in section.active_instruments:
-            for m in section.melody:
-                st = start_sec + (m.start_beat * beat_dur)
-                et = st + (m.duration_beats * beat_dur)
-                inst_mel.notes.append(pretty_midi.Note(
-                    velocity=m.velocity, pitch=m.midi_note, start=st, end=et,
-                ))
-
-    if humanize:
-        humanize_instrument(inst_chord)
-        humanize_instrument(inst_mel)
-
-    pm_chords.instruments.append(inst_chord)
-    pm_bass.instruments.append(inst_bass)
-    pm_melody.instruments.append(inst_mel)
-    
-    # Add TimeSignature (4/4) and TempoChange at tick 0 for DAW compatibility
-    for midi_obj in [pm_full, pm_chords, pm_bass, pm_mel]:
-        midi_obj.time_signature_changes.append(
-            pretty_midi.TimeSignature(numerator=4, denominator=4, time=0)
+    # --- Drums (Optional) ---
+    if drums:
+        pm_drums = pretty_midi.PrettyMIDI(initial_tempo=float(bpm))
+        inst_drums = pretty_midi.Instrument(program=0, name="Drums", is_drum=True)
+        
+        # Add TimeSignature (4/4) at time 0.0 for DAW compatibility
+        pm_drums.time_signature_changes.append(
+            pretty_midi.TimeSignature(numerator=4, denominator=4, time=0.0)
         )
+        for d in drums:
+            st = _to_seconds(d.start_beat, bpm)
+            et = st + (_to_seconds(d.duration_beats, bpm))
+            inst_drums.notes.append(pretty_midi.Note(
+                velocity=d.velocity, pitch=d.midi_note, start=st, end=et,
+            ))
+        if humanize:
+            humanize_instrument(inst_drums, style_name=swing_style, bpm=bpm)
+        pm_drums.instruments.append(inst_drums)
+        pm_drums.write(str(out_dir / "stem_drums.mid"))
 
-    pm_full.write(str(out_dir / "full_arrangement.mid"))
-    pm_chords.write(str(out_dir / "stem_chords.mid"))
-    pm_bass.write(str(out_dir / "stem_bass.mid"))
-    pm_melody.write(str(out_dir / "stem_melody.mid"))
 
-    with open(out_dir / "arrangement.json", "w") as f:
-        json.dump(meta_json, f, indent=4)
+def export_arrangement(arrangement: "Any", out_dir: Path) -> None:
+    """Experimental arrangement export is not implemented in this version."""
+    raise NotImplementedError(
+        "export_arrangement is experimental and not implemented for this release."
+    )

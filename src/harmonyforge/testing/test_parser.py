@@ -11,6 +11,12 @@ tests = [
     ("make me something dark bouncy metro f# harmonic",["metro_boomin"],[],     "F#",  "harmonic_minor",None,   8),
 ]
 
+request_tests = [
+    ("dark travis x metro 808 bass f# 8 bars", ["808"]),
+    ("emotional mike dean arpeggio c dorian", ["arpeggio"]),
+    ("lil uzi vert vocal topline c# minor", ["vocal"]),
+]
+
 all_pass = True
 for query, exp_prod, exp_art, exp_key, exp_scale, exp_bpm, exp_bars in tests:
     p = extract_structured_params(query)
@@ -31,6 +37,16 @@ for query, exp_prod, exp_art, exp_key, exp_scale, exp_bpm, exp_bars in tests:
     if not ok_scale: print(f"       scale: got {p['scale']}     expected {exp_scale}")
     if not ok_bpm:   print(f"       bpm:   got {p['bpm']}       expected {exp_bpm}")
     if not ok_bars:  print(f"       bars:  got {p['bars']}      expected {exp_bars}")
+
+for query, exp_requests in request_tests:
+    p = extract_structured_params(query)
+    ok_requests = sorted(p["instrument_requests"]) == sorted(exp_requests)
+    status = "PASS" if ok_requests else "FAIL"
+    if not ok_requests:
+        all_pass = False
+    print(f"[{status}] request parse {query!r}")
+    if not ok_requests:
+        print(f"       requests: got {p['instrument_requests']} expected {exp_requests}")
 
 print()
 print("ALL PASS" if all_pass else "SOME FAILED")
